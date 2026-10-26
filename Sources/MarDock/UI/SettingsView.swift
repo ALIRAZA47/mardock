@@ -442,6 +442,7 @@ struct AppsPane: View {
                         Button("Divider") { withAnimation { pins.insert(.newDivider()) } }
                         Button("Share Tile") { withAnimation { pins.insert(.share) } }
                             .disabled(pins.contains(DockIdentity.share))
+                        Button("Folder…") { addFolder() }
                     } label: {
                         Label("Add", systemImage: "rectangle.dashed")
                     }
@@ -460,7 +461,7 @@ struct AppsPane: View {
                     Text(importMessage).font(.callout).foregroundStyle(.secondary)
                 }
             } footer: {
-                FooterText("Spacers leave a gap, dividers draw a line with an optional name that shows when you point at it, and the Share tile sends files you drop on it to AirDrop, Mail or Messages.")
+                FooterText("Spacers leave a gap, dividers draw a line with an optional name that shows when you point at it, the Share tile sends files you drop on it to AirDrop, Mail or Messages, and a folder shows its newest files when you click it.")
             }
         }
         .formStyle(.grouped)
@@ -485,7 +486,23 @@ struct AppsPane: View {
             ItemRow(symbol: "square.and.arrow.up", title: "Share", detail: "Drop files on it for AirDrop, Mail or Messages") {
                 withAnimation { pins.remove(item.id) }
             }
+        case let .folder(stack):
+            ItemRow(symbol: "folder", title: stack.name, detail: stack.path) {
+                withAnimation { pins.remove(stack.id) }
+            }
         }
+    }
+
+    private func addFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+        panel.prompt = "Add to Dock"
+        panel.message = "Choose a folder to keep in MarDock. Its newest files will fan out when you click it."
+        guard panel.runModal() == .OK, let url = panel.url, let stack = FolderStacks.makeStack(for: url) else { return }
+        withAnimation { pins.insert(.folder(stack)) }
     }
 
     private func icon(forBundle identifier: String) -> NSImage {

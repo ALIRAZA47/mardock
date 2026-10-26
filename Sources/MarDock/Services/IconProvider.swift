@@ -8,6 +8,8 @@ import UniformTypeIdentifiers
 final class IconProvider {
     /// Icons the user picked; they win over the app's own.
     var customIcons: CustomIconStore?
+    /// Draws folder tiles.
+    var folders: FolderStacks?
     private var images: [String: NSImage] = [:]
     private var bitmaps: [String: CGImage] = [:]
 
@@ -70,8 +72,8 @@ final class IconProvider {
             return Self.spacerImage
         case .divider:
             return Self.dividerImage
-        case .folder:
-            return workspace.icon(for: .folder)
+        case let .folder(stack):
+            return folders?.icon(for: stack) ?? workspace.icon(for: .folder)
         case .running, .separator:
             break
         }

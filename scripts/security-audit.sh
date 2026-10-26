@@ -34,7 +34,7 @@ done
 
 echo "Entitlements"
 APP_KEYS="$(entitlement_keys "$APP")"
-EXPECTED="com.apple.security.app-sandbox com.apple.security.files.user-selected.read-write"
+EXPECTED="com.apple.security.app-sandbox com.apple.security.files.bookmarks.app-scope com.apple.security.files.user-selected.read-write"
 [[ "$APP_KEYS" == "$EXPECTED" ]] && pass "app: $APP_KEYS" || fail "app entitlements are '$APP_KEYS', expected '$EXPECTED'"
 AGENT_KEYS="$(entitlement_keys "$AGENT")"
 [[ -z "$AGENT_KEYS" ]] && pass "helper: none" || fail "helper has entitlements: $AGENT_KEYS"

@@ -53,6 +53,37 @@ enum DockMenus {
                 controller?.unpin(entry)
             })
             return menu
+        case let .folder(stack):
+            menu.addItem(ClosureMenuItem("Open", symbol: "square.stack.3d.up") { [weak controller] in
+                controller?.activate(entry, modifiers: [])
+            })
+            menu.addItem(ClosureMenuItem("Open in Finder", symbol: "folder") { [weak controller] in
+                controller?.openFolderInFinder(entry)
+            })
+            menu.addItem(.separator())
+            let display = NSMenu()
+            for (choice, title) in [(FolderStack.Display.stack, "Stack"), (.folder, "Folder")] {
+                display.addItem(ClosureMenuItem(title, state: stack.display == choice ? .on : .off) { [weak controller] in
+                    controller?.updateFolder(entry, display: choice)
+                })
+            }
+            let displayItem = NSMenuItem(title: "Display as", action: nil, keyEquivalent: "")
+            displayItem.submenu = display
+            menu.addItem(displayItem)
+            let sorting = NSMenu()
+            for (choice, title) in [(FolderStack.Sorting.dateAdded, "Date Added"), (.dateModified, "Date Modified"), (.name, "Name")] {
+                sorting.addItem(ClosureMenuItem(title, state: stack.sorting == choice ? .on : .off) { [weak controller] in
+                    controller?.updateFolder(entry, sorting: choice)
+                })
+            }
+            let sortItem = NSMenuItem(title: "Sort by", action: nil, keyEquivalent: "")
+            sortItem.submenu = sorting
+            menu.addItem(sortItem)
+            menu.addItem(.separator())
+            menu.addItem(ClosureMenuItem("Remove from Dock", symbol: "minus.circle") { [weak controller] in
+                controller?.unpin(entry)
+            })
+            return menu
         case .share:
             let hint = NSMenuItem(title: "Drop files here to share them with AirDrop, Mail or Messages.", action: nil, keyEquivalent: "")
             hint.isEnabled = false
@@ -205,6 +236,9 @@ enum DockMenus {
         })
         menu.addItem(ClosureMenuItem("Add Divider…", symbol: "rectangle.split.2x1") { [weak controller] in
             controller?.addItem(.newDivider(), atU: u)
+        })
+        menu.addItem(ClosureMenuItem("Add Folder…", symbol: "folder.badge.plus") { [weak controller] in
+            controller?.addFolder(atU: u)
         })
         if !controller.hasShareTile {
             menu.addItem(ClosureMenuItem("Add Share Tile", symbol: "square.and.arrow.up") { [weak controller] in

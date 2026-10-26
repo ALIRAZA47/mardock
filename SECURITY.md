@@ -28,6 +28,7 @@ runs inside the **App Sandbox**. Its only entitlements are:
 | --- | --- |
 | `com.apple.security.app-sandbox` | Confines the process. |
 | `com.apple.security.files.user-selected.read-write` | Lets MarDock open or save the files you pick in an Open or Save panel (apps to add, images for icons, theme and settings files), and nothing else. |
+| `com.apple.security.files.bookmarks.app-scope` | Lets MarDock remember a folder you chose to keep in the dock (a read-only security-scoped bookmark), so it can list that folder's newest files after a restart. |
 
 There is no network entitlement, so the sandbox refuses every socket the app
 could open. There is no Accessibility, Screen Recording, Input Monitoring,
@@ -83,7 +84,7 @@ evaluate, or an arbitrary preference key to write.
 | No network access | No network entitlement → sandbox denies sockets | Self-test tries to connect and expects `EPERM`; audit fails if either binary imports socket, `URLSession`, Network.framework or similar APIs |
 | No running other code | No `Process`/`NSTask`, `system`, `popen`, `posix_spawn`, `NSAppleScript`, `dlopen` anywhere | Audit scans imported symbols of both binaries (all architectures) |
 | No code injection | Hardened Runtime on both executables, no exception entitlements (library validation stays on) | Audit checks the `runtime` flag and the exact entitlement sets |
-| Least privilege | Sandbox + 1 file entitlement; helper allowlist | Audit (entitlements), self-test (helper refuses unknown keys, out-of-range values, garbage, protected apps, pid mismatches) |
+| Least privilege | Sandbox + access only to files and folders you pick; helper allowlist | Audit (entitlements), self-test (helper refuses unknown keys, out-of-range values, garbage, protected apps, pid mismatches) |
 | Tamper evidence | Signed bundle; helper validates the app and fails closed | Settings ▸ Privacy & Security ▸ Verify App Integrity |
 | Robust parsing | Every external input is bounded and validated: settings, pinned apps, XPC messages, the Dock's plist, dragged files | Unit tests with hostile inputs |
 | Reversible changes | Original macOS Dock values are saved before hiding and restored on quit | Self-test, manual recovery below |

@@ -19,6 +19,8 @@ final class DockController: NSObject {
     private let recents: RecentAppsStore
     private let customIcons: CustomIconStore
     private let themes: ThemeStore
+    private let folders: FolderStacks
+    private let stackPanel = StackPanel()
     private let running: RunningAppsMonitor
     private let icons: IconProvider
     private let actions: AppActions
@@ -52,13 +54,14 @@ final class DockController: NSObject {
 
     init(
         settings: SettingsStore, pins: PinStore, recents: RecentAppsStore, customIcons: CustomIconStore, themes: ThemeStore,
-        running: RunningAppsMonitor, icons: IconProvider, actions: AppActions, systemDock: SystemDockManager
+        folders: FolderStacks, running: RunningAppsMonitor, icons: IconProvider, actions: AppActions, systemDock: SystemDockManager
     ) {
         self.settings = settings
         self.pins = pins
         self.recents = recents
         self.customIcons = customIcons
         self.themes = themes
+        self.folders = folders
         self.running = running
         self.icons = icons
         self.actions = actions
@@ -81,6 +84,17 @@ final class DockController: NSObject {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.applySettings() }
             .store(in: &cancellables)
+        // A folder's newest files changed: redraw its tile.
+        folders.$revision
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.refreshFolderIcons() }
+            .store(in: &cancellables)
+        stackPanel.onClose = { [weak self] in
+            guard let self else { return }
+            self.reevaluateAutoHide()
+            self.mouse.refresh()
+        }
         // Editing the theme in use restyles the dock as you go.
         themes.$custom
             .dropFirst()
@@ -266,6 +280,7 @@ final class DockController: NSObject {
         updateGeometry()
         engine.setItems(built.map(\.spec), animated: animated)
         icons.retain(only: Set(built.map(\.id)))
+        folders.retain(only: Set(built.map(\.id)))
         dockView.updateAccessibility(items: built.filter(\.spec.hasLabel).map { ($0.id, name(for: $0.id)) })
         kick()
     }
@@ -385,7 +400,7 @@ final class DockController: NSObject {
     // MARK: - Auto-hide
 
     private var holdOpen: Bool {
-        menuIsOpen || sharePickerOpen || pressed != nil || dragSourceID != nil || externalDropActive
+        menuIsOpen || sharePickerOpen || stackPanel.isShown || pressed != nil || dragSourceID != nil || externalDropActive
     }
 
     private func reevaluateAutoHide() {
@@ -456,7 +471,10 @@ final class DockController: NSObject {
 
     func activate(_ entry: DockEntry, modifiers: NSEvent.ModifierFlags) {
         switch entry.kind {
-        case .separator, .spacer, .divider, .folder:
+        case .separator, .spacer, .divider:
+            return
+        case .folder:
+            toggleStack(entry)
             return
         case .trash:
             ripple(entry.id)
@@ -624,6 +642,99 @@ final class DockController: NSObject {
 
     func runningApp(for entry: DockEntry) -> NSRunningApplication? {
         running.runningApp(for: entry.id)
+    }
+
+    // MARK: - Folders
+
+    /// Lets the user choose a folder to keep in the dock.
+    func addFolder(atU u: Double?) {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+        panel.prompt = "Add to Dock"
+        panel.message = "Choose a folder to keep in MarDock. Its newest files will fan out when you click it."
+        NSApp.activate()
+        guard panel.runModal() == .OK, let url = panel.url, let stack = FolderStacks.makeStack(for: url) else { return }
+        addItem(.folder(stack), atU: u)
+    }
+
+    /// Opens or closes a folder tile's stack.
+    func toggleStack(_ entry: DockEntry) {
+        guard case let .folder(stack) = entry.kind else { return }
+        if stackPanel.stackID == entry.id {
+            stackPanel.close()
+            return
+        }
+        if let closed = stackPanel.lastClosed, closed.id == entry.id, ProcessInfo.processInfo.systemUptime - closed.time < 0.5 {
+            return
+        }
+        guard let url = folders.url(for: stack) else {
+            findFolder(entry)
+            return
+        }
+        let anchor = dockView.screenRect(forItem: entry.id)
+        guard anchor != .zero else { return }
+        stackPanel.show(id: entry.id, files: folders.files(in: stack), folder: url, name: stack.name, anchor: anchor, position: settings.settings.position)
+        reevaluateAutoHide()
+    }
+
+    func openFolderInFinder(_ entry: DockEntry) {
+        guard case let .folder(stack) = entry.kind else { return }
+        if let url = folders.url(for: stack) {
+            NSWorkspace.shared.open(url)
+        } else {
+            findFolder(entry)
+        }
+    }
+
+    /// Changes how a folder tile looks or sorts its files.
+    func updateFolder(_ entry: DockEntry, display: FolderStack.Display? = nil, sorting: FolderStack.Sorting? = nil) {
+        guard case var .folder(stack) = entry.kind else { return }
+        if let display { stack.display = display }
+        if let sorting { stack.sorting = sorting }
+        pins.replace(.folder(stack))
+        icons.invalidate(entry.id)
+        dockView.reloadImages()
+        rebuild(animated: true)
+    }
+
+    /// The folder's bookmark doesn't lead anywhere (it was moved or deleted,
+    /// or the dock came from another Mac): offer to choose it again.
+    private func findFolder(_ entry: DockEntry) {
+        guard case let .folder(stack) = entry.kind else { return }
+        let alert = NSAlert()
+        alert.messageText = "MarDock can't open “\(stack.name)”"
+        alert.informativeText = "It may have been moved or deleted. Choose the folder again to keep it in the dock."
+        alert.addButton(withTitle: "Choose Folder…")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate()
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.prompt = "Choose"
+        guard panel.runModal() == .OK, let url = panel.url, let fresh = FolderStacks.makeStack(for: url),
+              let replacement = FolderStack(id: stack.id, name: fresh.name, path: fresh.path, bookmark: fresh.bookmark, display: stack.display, sorting: stack.sorting)
+        else { return }
+        pins.replace(.folder(replacement))
+        icons.invalidate(entry.id)
+        dockView.reloadImages()
+        rebuild(animated: true)
+    }
+
+    private func refreshFolderIcons() {
+        var changed = false
+        for entry in entries {
+            if case .folder = entry.kind {
+                icons.invalidate(entry.id)
+                changed = true
+            }
+        }
+        guard changed else { return }
+        dockView.reloadImages()
+        renderNow()
     }
 
     // MARK: - Sharing

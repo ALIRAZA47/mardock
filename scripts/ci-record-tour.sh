@@ -7,6 +7,7 @@ set -uo pipefail
 APP="${1:-build/selftest/MarDock.app}"
 OUT="${2:-build/tour}"
 mkdir -p "$OUT"
+[[ -x "$APP/Contents/MacOS/MarDock" ]] || { echo "No app at $APP (did the build fail?); skipping the tour."; exit 0; }
 
 # Move the runner's own Dock out of the way; let the glass and the motion show.
 defaults write com.apple.dock autohide -bool true

@@ -11,6 +11,7 @@ final class AppCoordinator: NSObject, ObservableObject {
     let recents = RecentAppsStore()
     let customIcons = CustomIconStore()
     let themes = ThemeStore()
+    let folders = FolderStacks()
     let running = RunningAppsMonitor()
     let icons = IconProvider()
     let shortcuts = LaunchShortcuts()
@@ -32,12 +33,13 @@ final class AppCoordinator: NSObject, ObservableObject {
         systemDock = SystemDockManager(agent: agent)
         actions = AppActions(agent: agent, pins: pins)
         dock = DockController(
-            settings: settings, pins: pins, recents: recents, customIcons: customIcons, themes: themes,
+            settings: settings, pins: pins, recents: recents, customIcons: customIcons, themes: themes, folders: folders,
             running: running, icons: icons, actions: actions, systemDock: systemDock
         )
         security = SecurityStatus(agent: agent)
         super.init()
         icons.customIcons = customIcons
+        icons.folders = folders
         dock.coordinator = self
     }
 

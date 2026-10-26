@@ -90,6 +90,10 @@ enum SelfTest {
         iconStore.removeIcon(for: iconID)
         check("custom-icon-removed", !CustomIconStore().hasIcon(for: iconID))
 
+        // Folder stacks: bookmark a folder, open it again through the
+        // bookmark, list its newest files and draw the stack.
+        checkFolderStack()
+
         // 4. The helper.
         do {
             let info = try await agent.hello()
@@ -152,6 +156,38 @@ enum SelfTest {
         renderSmokeTest()
 
         return failures == 0
+    }
+
+    private static func checkFolderStack() {
+        let fileManager = FileManager.default
+        guard let base = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            check("folder-stack", false, "no Application Support folder")
+            return
+        }
+        let folder = base.appendingPathComponent("SelfTestStack", isDirectory: true)
+        defer { try? fileManager.removeItem(at: folder) }
+        try? fileManager.removeItem(at: folder)
+        do {
+            try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
+            for (index, name) in ["Old.txt", "Middle.txt", "Newest.txt"].enumerated() {
+                let file = folder.appendingPathComponent(name)
+                try Data(name.utf8).write(to: file)
+                try fileManager.setAttributes([.modificationDate: Date(timeIntervalSinceNow: Double(index - 10) * 60)], ofItemAtPath: file.path)
+            }
+        } catch {
+            check("folder-stack", false, error.localizedDescription)
+            return
+        }
+        guard var stack = FolderStacks.makeStack(for: folder) else {
+            check("folder-stack", false, "couldn't bookmark the folder")
+            return
+        }
+        stack.sorting = .dateModified
+        let stacks = FolderStacks()
+        let files = stacks.files(in: stack)
+        let names = files.map(\.url.lastPathComponent)
+        let drawn = IconProvider.render(stacks.icon(for: stack), pixels: 64) != nil
+        check("folder-stack", names.first == "Newest.txt" && names.count == 3 && drawn, names.joined(separator: ", "))
     }
 
     private static func expectRefusal(_ name: String, _ expected: AgentFailure, _ body: () async throws -> Void) async {

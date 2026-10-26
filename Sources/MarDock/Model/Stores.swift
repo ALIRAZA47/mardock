@@ -107,6 +107,14 @@ final class PinStore: ObservableObject {
         insert(item, at: index)
     }
 
+    /// Swaps an item for an updated version of itself (same id).
+    func replace(_ item: DockItem) {
+        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
+        var list = items
+        list[index] = item
+        setItems(list)
+    }
+
     func rename(_ id: String, to title: String) {
         guard let index = items.firstIndex(where: { $0.id == id }), case .divider = items[index] else { return }
         var list = items

@@ -8,6 +8,7 @@ APP="${1:-build/selftest/MarDock.app}"
 OUT="${2:-build/screenshots}"
 THEMES="${THEMES:-glass liquid aurora midnight sunset mirror minimal}"
 mkdir -p "$OUT"
+[[ -x "$APP/Contents/MacOS/MarDock" ]] || { echo "No app at $APP (did the build fail?); skipping screenshots."; exit 0; }
 
 # Move the runner's own Dock out of the way (the runner is disposable).
 defaults write com.apple.dock autohide -bool true
