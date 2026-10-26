@@ -207,6 +207,16 @@ enum SelfTest {
         check("launch", true, "pid \(app.processIdentifier)")
         _ = await waitUntil(5) { app.isFinishedLaunching }
 
+        // Hiding a background app through the helper.
+        if (try? await agent.setHidden(pid: app.processIdentifier, bundleIdentifier: identifier, hidden: true)) != nil {
+            let hidden = await waitUntil(2) { app.isHidden }
+            info("hide-background-via-helper", "hidden \(hidden)")
+            _ = try? await agent.setHidden(pid: app.processIdentifier, bundleIdentifier: identifier, hidden: false)
+            _ = await waitUntil(2) { !app.isHidden }
+        } else {
+            info("hide-background-via-helper", "request failed")
+        }
+
         // Bringing a running app forward the way the dock does it.
         let activate = NSWorkspace.OpenConfiguration()
         activate.activates = true

@@ -10,8 +10,16 @@
 //     against strict allowlists before anything happens;
 //   • it never runs shell commands, loads code, or touches the network.
 
+import AppKit
 import Foundation
 import MarDockCore
+
+// Check in with the window server and Launch Services as a background-only
+// app (no Dock icon, no menus, no windows). Hiding other apps requires the
+// caller to be a registered app.
+MainActor.assumeIsolated {
+    _ = NSApplication.shared.setActivationPolicy(.prohibited)
+}
 
 let gate = ClientGate()
 let limiter = RateLimiter()
