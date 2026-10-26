@@ -45,7 +45,7 @@ wait_for_tour() {
 start_tour "$OUT/tour.log" || exit 0
 secs="$(sed -n 's/^TOUR READY \([0-9]*\).*/\1/p' "$OUT/tour.log" | head -n 1)"
 secs="${secs:-40}"
-screencapture -v -V "$((secs + 4))" -x "$OUT/tour.mov" >"$OUT/recorder.log" 2>&1 &
+screencapture -v -V "$secs" -x "$OUT/tour.mov" >"$OUT/recorder.log" 2>&1 &
 recorder=$!
 wait_for_tour
 for _ in $(seq 1 30); do

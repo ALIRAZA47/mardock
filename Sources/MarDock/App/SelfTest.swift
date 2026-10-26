@@ -377,6 +377,11 @@ enum DemoMode {
 
     private static var backdrop: NSWindow?
 
+    /// Puts the pretend wallpaper back in front of other apps' windows.
+    static func raiseBackdrop() {
+        backdrop?.orderFrontRegardless()
+    }
+
     /// A colourful "wallpaper" window behind the dock, so screenshots show
     /// what the glass does (CI desktops are plain black).
     private static func showBackdrop() {
@@ -433,17 +438,26 @@ enum DemoMode {
 /// `--demo --tour`: plays a scripted tour of the real dock for CI to record.
 /// A pretend pointer drives the dock through the same path as real mouse
 /// movement; the click, the menus and the settings changes are the real ones.
+/// Every step is due at a fixed time, so however slowly the runner draws, the
+/// tour fits the recording, which runs for a fixed time.
 @MainActor
 final class DemoTour {
-    /// About how long the tour runs, for the recorder.
+    /// How long to record after "TOUR READY": the tour, then a moment's hold.
     static let seconds = 38
     private static var current: DemoTour?
+    private static let calculatorBundleIdentifier = "com.apple.calculator"
 
     private let coordinator: AppCoordinator
     private let cursor = PretendCursor()
     private var point = NSPoint.zero
+    /// When the tour began, and how many seconds into it the next step is due.
+    private var began = 0.0
+    private var due = 0.0
+    private var activity: NSObjectProtocol?
+    private var activationObserver: NSObjectProtocol?
     private var dock: DockController { coordinator.dock }
     private var screen: NSRect { NSScreen.screens.first?.frame ?? .zero }
+    private var elapsed: Double { ProcessInfo.processInfo.systemUptime - began }
 
     private init(coordinator: AppCoordinator) {
         self.coordinator = coordinator
@@ -452,26 +466,48 @@ final class DemoTour {
     static func start(_ coordinator: AppCoordinator) {
         let tour = DemoTour(coordinator: coordinator)
         current = tour
-        CGDisplayHideCursor(CGMainDisplayID())
-        tour.move(to: NSPoint(x: tour.screen.midX, y: tour.screen.minY + tour.screen.height * 0.55))
-        tour.cursor.show()
+        tour.prepare()
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 1_000_000_000)
             // The recorder starts on this line; give it a moment before the first move.
             print("TOUR READY \(seconds)")
             fflush(stdout)
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            tour.began = ProcessInfo.processInfo.systemUptime
+            await tour.pause(2)
             await tour.run()
-            print("TOUR DONE")
+            print(String(format: "TOUR DONE after %.1f s", tour.elapsed))
             fflush(stdout)
             try? await Task.sleep(nanoseconds: 1_000_000_000)
             exit(0)
         }
     }
 
+    private func prepare() {
+        // Nothing may throttle the tour's timers while it is recorded.
+        activity = ProcessInfo.processInfo.beginActivity(
+            options: [.userInitiated, .latencyCritical], reason: "Recording a tour of the dock"
+        )
+        // When Calculator hides, the system brings the previous app forward.
+        // Make that us rather than Finder, and should another app come forward
+        // anyway, keep its windows (the self-test leaves one open in Finder)
+        // behind the pretend desktop.
+        NSApp.activate()
+        let demoed = Self.calculatorBundleIdentifier
+        activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+        ) { note in
+            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            guard app?.bundleIdentifier != demoed else { return }
+            MainActor.assumeIsolated { DemoMode.raiseBackdrop() }
+        }
+        CGDisplayHideCursor(CGMainDisplayID())
+        move(to: NSPoint(x: screen.midX, y: screen.minY + screen.height * 0.55))
+        cursor.show()
+    }
+
     private func run() async {
-        let calculator = DockIdentity.app("com.apple.calculator")
-        guard let first = center(of: DockIdentity.finder), let last = center(of: DockIdentity.trash) else {
+        let calculator = DockIdentity.app(Self.calculatorBundleIdentifier)
+        guard let first = dock.restingCenter(of: DockIdentity.finder), let last = dock.restingCenter(of: DockIdentity.trash) else {
             print("TOUR FAIL the dock has no tiles")
             return
         }
@@ -483,19 +519,20 @@ final class DemoTour {
         await glide(to: NSPoint(x: middle, y: first.y), over: 1.2)
 
         // Open an app: it bounces while it launches, then its light comes on.
-        if let target = center(of: calculator) { await glide(to: target, over: 0.8) }
+        await glide(toTile: calculator, over: 0.9)
         dock.demoClick(calculator)
         await pause(2.6)
 
-        // Its menu, then Hide: the icon dims.
-        if let target = center(of: calculator) { await glide(to: target, over: 0.3) }
-        dock.demoMenu(for: calculator, choosing: "Hide", after: 1.6)
+        // Its menu, then Hide: the window goes and the icon dims.
+        showMenu(of: calculator, choosing: "Hide", after: 1.6)
         await pause(0.8)
 
         // Every theme.
         for theme in [ThemeID.aurora, .midnight, .sunset, .liquid, .mirror, .minimal, .glass] {
             coordinator.settings.update { $0.theme = theme }
-            await sweep(around: middle, over: 1.4)
+            let row = dock.restingCenter(of: DockIdentity.finder)?.y ?? first.y
+            await glide(to: NSPoint(x: middle - 110, y: row), over: 0.7)
+            await glide(to: NSPoint(x: middle + 110, y: row), over: 0.7)
         }
 
         // Auto-hide: it slides away when the pointer leaves, and comes back at the edge.
@@ -504,30 +541,27 @@ final class DemoTour {
         await pause(1.0)
         await glide(to: NSPoint(x: screen.midX, y: screen.minY + 0.5), over: 0.9)
         await pause(1.2)
-        await glide(to: NSPoint(x: screen.midX, y: center(of: DockIdentity.finder)?.y ?? first.y), over: 0.5)
+        await glide(to: NSPoint(x: screen.midX, y: first.y), over: 0.5)
         coordinator.settings.update { $0.autoHide = .off }
         await pause(0.6)
 
         // On the left side of the screen.
         coordinator.settings.update { $0.position = .left }
         await pause(0.9)
-        if let top = center(of: DockIdentity.finder), let bottom = center(of: DockIdentity.trash) {
+        if let top = dock.restingCenter(of: DockIdentity.finder), let bottom = dock.restingCenter(of: DockIdentity.trash) {
             await glide(to: NSPoint(x: top.x, y: top.y - 20), over: 0.8)
             await glide(to: NSPoint(x: top.x, y: bottom.y + 20), over: 2.2)
+        } else {
+            await pause(3.0)
         }
         coordinator.settings.update { $0.position = .bottom }
         await pause(1.0)
 
         // Quit the app from its menu: the light fades.
-        if let target = center(of: calculator) { await glide(to: target, over: 0.8) }
-        dock.demoMenu(for: calculator, choosing: "Quit", after: 1.4)
+        await glide(toTile: calculator, over: 0.8)
+        showMenu(of: calculator, choosing: "Quit", after: 1.4)
         await glide(to: NSPoint(x: point.x, y: screen.midY), over: 1.0)
-        await pause(1.5)
-    }
-
-    private func center(of id: String) -> NSPoint? {
-        let rect = dock.dockView.screenRect(forItem: id)
-        return rect == .zero ? nil : NSPoint(x: rect.midX, y: rect.midY)
+        await pause(1.0)
     }
 
     private func move(to p: NSPoint) {
@@ -538,25 +572,42 @@ final class DemoTour {
         CGWarpMouseCursorPosition(CGPoint(x: p.x, y: screen.maxY - p.y))
     }
 
+    /// Glides the pointer to `target` along an eased path that ends when the
+    /// step is due. Running late, it hurries to catch up rather than jumping.
     private func glide(to target: NSPoint, over seconds: Double) async {
         let from = point
-        let steps = max(1, Int(seconds * 60))
-        for i in 1...steps {
-            let t = Double(i) / Double(steps)
+        let start = max(due, elapsed)
+        due += seconds
+        let span = max(due - start, 0.001)
+        while true {
+            let t = min(max((elapsed - start) / span, 0), 1)
             let e = t < 0.5 ? 4 * t * t * t : 1 - pow(-2 * t + 2, 3) / 2
             move(to: NSPoint(x: from.x + (target.x - from.x) * e, y: from.y + (target.y - from.y) * e))
-            try? await Task.sleep(nanoseconds: 16_666_667)
+            if t >= 1 { return }
+            try? await Task.sleep(nanoseconds: 8_000_000)
         }
     }
 
-    private func sweep(around x: CGFloat, over seconds: Double) async {
-        let row = center(of: DockIdentity.finder)?.y ?? point.y
-        await glide(to: NSPoint(x: x - 110, y: row), over: seconds / 2)
-        await glide(to: NSPoint(x: x + 110, y: row), over: seconds / 2)
+    private func glide(toTile id: String, over seconds: Double) async {
+        if let target = dock.restingCenter(of: id) {
+            await glide(to: target, over: seconds)
+        } else {
+            await pause(seconds)
+        }
     }
 
+    /// Opens a tile's menu for `seconds` (the call returns once it closes),
+    /// then picks the item titled `title`.
+    private func showMenu(of id: String, choosing title: String, after seconds: Double) {
+        due += seconds
+        dock.demoMenu(for: id, choosing: title, after: seconds)
+    }
+
+    /// Waits until the end of a pause of `seconds`.
     private func pause(_ seconds: Double) async {
-        try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+        due += seconds
+        let wait = due - elapsed
+        if wait > 0 { try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000)) }
     }
 }
 
@@ -603,6 +654,31 @@ extension DockController {
         let u = frame.shelfStart + (frame.shelfEnd - frame.shelfStart) * min(max(fraction, 0), 1)
         engine.setPointer(DockPointer(u: u, v: engine.metrics.edgeGap + engine.metrics.shelfThickness / 2))
         for _ in 0..<90 { dockView.apply(engine.tick(1.0 / 60)) }
+    }
+
+    /// Where the pointer has to be for tile `id` to end up under it: the
+    /// tile's centre with the magnification taken out. The magnifier keeps
+    /// whatever is under the pointer in place, so aiming at a tile's
+    /// magnified position lands on one of its neighbours instead.
+    func restingCenter(of id: String) -> NSPoint? {
+        let frame = engine.lastFrame
+        let m = engine.metrics
+        guard let item = frame.item(id: id), let window = dockView.window else { return nil }
+        let magnifier = Magnifier(focus: frame.focus, peakScale: 1 + (m.peakScale - 1) * frame.magnification, radius: m.radius)
+        func unwarp(_ x: Double) -> Double {
+            var lo = x - magnifier.maxGrowthPerSide - 1
+            var hi = x + magnifier.maxGrowthPerSide + 1
+            for _ in 0..<50 {
+                let mid = (lo + hi) / 2
+                if magnifier.warp(mid) < x { lo = mid } else { hi = mid }
+            }
+            return (lo + hi) / 2
+        }
+        let u = (unwarp(item.slotStart) + unwarp(item.slotEnd)) / 2
+        let size = dockView.bounds.size
+        let axis = DockAxis(position: dockView.configuration.position, width: Double(size.width), height: Double(size.height))
+        let p = axis.toView(u: u, v: item.baseline + m.iconSize / 2)
+        return window.convertPoint(toScreen: dockView.convert(NSPoint(x: p.x, y: p.y), to: nil))
     }
 
     /// The area around the shelf worth screenshotting, in screen coordinates
