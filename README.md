@@ -8,6 +8,10 @@
   A dock for macOS that's fluid, beautiful — and private by design.
 </p>
 
+<p align="center">
+  <img src="docs/screenshots/dock-glass.jpg" width="820" alt="MarDock's Glass theme, magnifying the Photos icon">
+</p>
+
 MarDock replaces (or sits alongside) the macOS Dock with a dock that moves like
 it's made of something real: physically based magnification, launch bounces,
 ripples, a puff of smoke when you drag an app away, and seven themes from
@@ -53,6 +57,26 @@ access and asks for no special permissions.
 - VoiceOver can explore and press every dock item.
 - Respects Reduce Motion (no bounces or particles), Reduce Transparency and
   Increase Contrast.
+
+## Themes
+
+<p align="center">
+  <img src="docs/screenshots/themes.jpg" width="900" alt="The seven themes: Glass, Liquid, Aurora, Midnight, Sunset, Mirror and Minimal">
+</p>
+
+<table>
+  <tr>
+    <td><img src="docs/screenshots/settings.png" alt="Settings with a live dock preview and theme gallery"></td>
+    <td><img src="docs/screenshots/welcome.png" alt="The welcome screen"></td>
+  </tr>
+  <tr>
+    <td align="center">Settings, with a live preview you can play with</td>
+    <td align="center">First-run welcome</td>
+  </tr>
+</table>
+
+<sub>Screenshots are taken automatically by CI on a macOS 15 runner (over a test
+backdrop). On macOS 26 the Liquid theme uses the system's real Liquid Glass.</sub>
 
 ## Security and privacy
 
