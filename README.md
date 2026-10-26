@@ -119,6 +119,15 @@ Details: [SECURITY.md](SECURITY.md) · [PRIVACY.md](PRIVACY.md)
   the Command Line Tools (`xcode-select --install`) for a build for your Mac's
   architecture.
 
+## Download
+
+Get the disk image from [Releases](https://github.com/ALIRAZA47/mardock/releases),
+open it and drag MarDock to Applications. Each release lists SHA-256
+checksums, and, when the repository's signing secrets are set up, is signed
+with a Developer ID and notarized by Apple. Check a download with
+`shasum -a 256 -c SHA256SUMS.txt --ignore-missing`, and its build provenance
+with `gh attestation verify MarDock-<version>.dmg --repo ALIRAZA47/mardock`.
+
 ## Build and run
 
 ```sh
@@ -160,7 +169,28 @@ SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" make app
 ditto -c -k --keepParent build/MarDock.app build/MarDock.zip
 xcrun notarytool submit build/MarDock.zip --keychain-profile <profile> --wait
 xcrun stapler staple build/MarDock.app
+make dmg        # build/MarDock.dmg, signed when SIGN_IDENTITY is set
 ```
+
+### Releases
+
+Pushing a tag such as `v1.0.0` runs the **Release** workflow: it builds the
+universal app, runs the security audit, signs and notarizes it, packs a disk
+image and a zip with their checksums, records build provenance and publishes
+them as a GitHub release. Run it by hand from the Actions tab for a test
+build (uploaded as an artifact, nothing published).
+
+Without secrets the release is signed ad-hoc and says so. To sign and
+notarize, add these repository secrets (Settings ▸ Secrets and variables ▸
+Actions):
+
+| Secret | What |
+| --- | --- |
+| `MACOS_CERTIFICATE` | Your **Developer ID Application** certificate and key, exported from Keychain Access as .p12, then `base64 -i cert.p12` |
+| `MACOS_CERTIFICATE_PASSWORD` | The password you gave the .p12 |
+| `MACOS_SIGN_IDENTITY` | Its name, e.g. `Developer ID Application: Your Name (TEAMID)` |
+| `NOTARY_API_KEY`, `NOTARY_API_KEY_ID`, `NOTARY_API_ISSUER` | An App Store Connect API key (`base64 -i AuthKey_XXXX.p8`), its key ID and issuer ID |
+| or `NOTARY_APPLE_ID`, `NOTARY_TEAM_ID`, `NOTARY_PASSWORD` | Your Apple ID, team ID and an app-specific password |
 
 ## Getting the macOS Dock back
 

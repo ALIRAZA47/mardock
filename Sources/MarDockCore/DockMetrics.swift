@@ -66,8 +66,8 @@ public struct DockMetrics: Equatable, Sendable {
     }
 
     /// Metrics that fit `tiles` icons and `separators` dividers into
-    /// `available` points, shrinking the icons (like the macOS Dock does) if
-    /// the preferred size doesn't fit. Never grows them.
+    /// `available` points, magnified or not, shrinking the icons (like the
+    /// macOS Dock does) if the preferred size doesn't fit. Never grows them.
     public static func fitting(
         _ settings: DockSettings,
         tallFloor: Bool = false,
@@ -78,7 +78,11 @@ public struct DockMetrics: Equatable, Sendable {
         var metrics = make(from: settings, tallFloor: tallFloor)
         guard available > 0, tiles + separators > 0 else { return metrics }
         for _ in 0..<12 {
-            let needed = Double(tiles) * metrics.slot + Double(separators) * metrics.separatorWidth + 2 * metrics.endPadding
+            // Room for magnification too, so the magnified dock never runs
+            // off the screen: centred at rest, it grows by at most
+            // `maxGrowthPerSide` past each end.
+            let needed = Double(tiles) * metrics.slot + Double(separators) * metrics.separatorWidth
+                + 2 * metrics.endPadding + 2 * metrics.maxGrowthPerSide
             guard needed > available, metrics.iconSize > 16 else { break }
             let smaller = max(16, (metrics.iconSize * available / needed).rounded(.down))
             if smaller >= metrics.iconSize { break }
@@ -88,6 +92,9 @@ public struct DockMetrics: Equatable, Sendable {
     }
 
     public var slot: Double { iconSize + spacing }
+    /// The most magnification lengthens the dock on one side of the pointer
+    /// (the same as `Magnifier.maxGrowthPerSide` at full magnification).
+    public var maxGrowthPerSide: Double { (max(peakScale, 1) - 1) * radius / 2 }
     public var shelfThickness: Double { insetBottom + iconSize + insetTop }
     public var radius: Double { max(slot * spread, slot) }
     public var bounceHeight: Double { (iconSize * 0.55).rounded() }

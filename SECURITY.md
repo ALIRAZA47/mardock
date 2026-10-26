@@ -128,7 +128,14 @@ killall Dock
 - Local builds are signed ad-hoc. To distribute, build with a Developer ID
   (`SIGN_IDENTITY="Developer ID Application: …" make app`) and notarize
   (see README).
-- GitHub Actions in this repo run with read-only permissions and no secrets.
+- Releases come from the **Release** workflow, which runs only for version
+  tags (or by hand). It is the only workflow that sees the signing and
+  notary secrets and the only one that can write (to create the release).
+  It runs the security audit on the exact app it ships, signs it with
+  the Developer ID kept in a throwaway keychain, notarizes the app and
+  the disk image, and publishes SHA-256 checksums and a build provenance
+  attestation (`gh attestation verify`) next to them.
+- The CI workflow runs with read-only permissions and no secrets.
   For extra supply-chain hardening, pin the actions to commit SHAs.
 
 ## Reporting a vulnerability

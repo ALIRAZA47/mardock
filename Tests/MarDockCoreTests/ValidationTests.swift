@@ -99,10 +99,29 @@ final class SettingsTests: XCTestCase {
         XCTAssertEqual(roomy.iconSize, 64)
         let tight = DockMetrics.fitting(s, tiles: 30, separators: 2, available: 1000)
         XCTAssertLessThan(tight.iconSize, 64)
-        let needed = 30 * tight.slot + 2 * tight.separatorWidth + 2 * tight.endPadding
+        let needed = 30 * tight.slot + 2 * tight.separatorWidth + 2 * tight.endPadding + 2 * tight.maxGrowthPerSide
         XCTAssertLessThanOrEqual(needed, 1000)
         let absurd = DockMetrics.fitting(s, tiles: 500, separators: 0, available: 300)
         XCTAssertEqual(absurd.iconSize, 16)
+    }
+
+    /// A dock that only just fits at rest must still fit while magnified.
+    func testFittingLeavesRoomForMagnification() {
+        var s = DockSettings()
+        s.iconSize = 48
+        s.magnificationEnabled = true
+        let tiles = 16, separators = 3
+        let fitted = DockMetrics.fitting(s, tiles: tiles, separators: separators, available: 1000)
+        let resting = Double(tiles) * fitted.slot + Double(separators) * fitted.separatorWidth + 2 * fitted.endPadding
+        let magnifier = Magnifier(focus: 0, peakScale: fitted.peakScale, radius: fitted.radius)
+        XCTAssertEqual(fitted.maxGrowthPerSide, magnifier.maxGrowthPerSide, accuracy: 1e-9)
+        XCTAssertLessThanOrEqual(resting + 2 * magnifier.maxGrowthPerSide, 1000)
+        XCTAssertLessThan(fitted.iconSize, 48)
+
+        s.magnificationEnabled = false
+        let flat = DockMetrics.fitting(s, tiles: tiles, separators: separators, available: 1000)
+        XCTAssertEqual(flat.maxGrowthPerSide, 0)
+        XCTAssertEqual(flat.iconSize, 48)
     }
 
     func testMetricsScaleWithIconSize() {

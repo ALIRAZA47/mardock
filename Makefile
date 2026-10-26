@@ -1,6 +1,6 @@
 # MarDock — common tasks. Requires Xcode 15 or later (or its command line tools).
 
-.PHONY: app run install test audit selftest icon playground clean
+.PHONY: app run install dmg test audit selftest icon playground clean
 
 ## Build build/MarDock.app (universal, Hardened Runtime, ad-hoc signed).
 ## Set SIGN_IDENTITY="Developer ID Application: …" to sign for distribution.
@@ -16,6 +16,10 @@ install: app
 	rm -rf /Applications/MarDock.app
 	ditto build/MarDock.app /Applications/MarDock.app
 	open /Applications/MarDock.app
+
+## Pack build/MarDock.app into build/MarDock.dmg (signed when SIGN_IDENTITY is set).
+dmg: app
+	scripts/make-dmg.sh build/MarDock.app build/MarDock.dmg
 
 ## Unit tests for the engine, validation and protocol.
 test:

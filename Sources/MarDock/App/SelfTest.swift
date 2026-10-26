@@ -491,13 +491,14 @@ enum DemoMode {
             } else {
                 coordinator.showSettings()
             }
-            reportWindow(titled: "MarDock Settings")
+            // Its title follows the pane, so find it by its saved frame's name.
+            reportWindow { $0.frameAutosaveName == "MarDockSettings" }
         case "theme-editor":
             showThemeEditor(neonCandy, coordinator: coordinator, nearTop: false)
-            reportWindow(titled: "Theme Editor")
+            reportWindow { $0.title == "Theme Editor" }
         case "welcome":
             coordinator.showWelcome()
-            reportWindow(titled: "Welcome to MarDock")
+            reportWindow { $0.title == "Welcome to MarDock" }
         default:
             let hover = value("--hover").flatMap(Double.init)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
@@ -519,10 +520,10 @@ enum DemoMode {
     /// A theme as someone might make in the theme editor.
     static var neonCandy: ThemeRecipe {
         var r = ThemeRecipe.builtIn(.midnight).duplicate(named: "Neon Candy")
-        r.tint = [ThemeColor(hex: 0x2A0845), ThemeColor(hex: 0x4B1D7A), ThemeColor(hex: 0x0B3A5B)]
-        r.tintOpacity = 0.58
-        r.aurora = [ThemeColor(hex: 0xFF4FD8), ThemeColor(hex: 0x00E5FF), ThemeColor(hex: 0xFFD86F)]
-        r.auroraOpacity = 0.42
+        r.tint = [ThemeColor(hex: 0xFF4FD8), ThemeColor(hex: 0x7B5CFF), ThemeColor(hex: 0x00C2FF)]
+        r.tintOpacity = 0.5
+        r.aurora = [ThemeColor(hex: 0xFFD86F), ThemeColor(hex: 0xFF4FD8)]
+        r.auroraOpacity = 0.3
         r.borderStart = ThemeColor(hex: 0xFF4FD8, alpha: 0.95)
         r.borderEnd = ThemeColor(hex: 0x00E5FF, alpha: 0.85)
         r.borderWidth = 1.4
@@ -541,16 +542,20 @@ enum DemoMode {
         let root = ThemeEditor(recipe: recipe)
             .environmentObject(coordinator.settings)
             .environmentObject(coordinator.themes)
-        let window = NSWindow(contentViewController: NSHostingController(rootView: root))
+        let hosting = NSHostingController(rootView: root)
+        let window = NSWindow(contentViewController: hosting)
         window.title = "Theme Editor"
         window.styleMask = [.titled, .closable, .fullSizeContentView]
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.isReleasedWhenClosed = false
+        // Size it before placing it: the hosting controller sizes lazily.
+        window.setContentSize(hosting.view.fittingSize)
         window.center()
         if nearTop, let screen = NSScreen.screens.first {
             let frame = window.frame
-            window.setFrameOrigin(NSPoint(x: screen.frame.midX - frame.width / 2, y: screen.frame.maxY - frame.height - 6))
+            let visible = screen.visibleFrame
+            window.setFrameOrigin(NSPoint(x: visible.midX - frame.width / 2, y: visible.maxY - frame.height))
         }
         NSApp.activate()
         window.makeKeyAndOrderFront(nil)
@@ -623,10 +628,10 @@ enum DemoMode {
         backdrop = window
     }
 
-    private static func reportWindow(titled title: String) {
+    private static func reportWindow(matching isWanted: @escaping @MainActor (NSWindow) -> Bool) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
             MainActor.assumeIsolated {
-                guard let window = NSApp.windows.first(where: { $0.title == title }),
+                guard let window = NSApp.windows.first(where: { isWanted($0) }),
                       let screen = window.screen ?? NSScreen.screens.first
                 else {
                     print("DEMO WINDOW MISSING")
