@@ -263,6 +263,8 @@ enum SelfTest {
             let probe = base.appendingPathComponent("MarDock trash probe.txt")
             var trashed: NSURL?
             if (try? Data("probe".utf8).write(to: probe)) != nil, (try? FileManager.default.trashItem(at: probe, resultingItemURL: &trashed)) != nil {
+                // The helper answers this at most twice a second.
+                try? await Task.sleep(nanoseconds: 600_000_000)
                 let full = (try? await agent.trashIsFull()).map { $0 ? "full" : "empty" } ?? "unknown"
                 info("trash-after-trashing", "\(full); the file went to \(trashed?.path ?? "?")")
                 if let trashed { try? FileManager.default.removeItem(at: trashed as URL) }

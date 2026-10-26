@@ -14,7 +14,8 @@ DB="/Library/Application Support/com.apple.TCC/TCC.db"
 
 csrutil status 2>&1 | sed 's/^/  /' || true
 identifier="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Info.plist")"
-requirement="$(codesign -d -r- "$APP" 2>&1 | sed -n 's/^designated => //p')"
+# Ad-hoc signatures print their implicit requirement as "# designated => cdhash H…".
+requirement="$(codesign -d -r- "$APP" 2>&1 | sed -n 's/^#* *designated => //p' | head -n 1)"
 blob="$(mktemp)"
 if ! csreq -r="$requirement" -b "$blob" 2>/dev/null; then
   echo "Couldn't compile the code requirement '$requirement'; skipping."
