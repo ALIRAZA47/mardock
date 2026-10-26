@@ -80,7 +80,7 @@ final class DockController: NSObject {
         .store(in: &cancellables)
 
         listen(NotificationCenter.default, NSApplication.didChangeScreenParametersNotification) { controller in
-            controller.updatePanelFrame()
+            controller.updateGeometry(force: true)
         }
         let workspace = NSWorkspace.shared.notificationCenter
         listen(workspace, NSWorkspace.accessibilityDisplayOptionsDidChangeNotification) { controller in
@@ -139,15 +139,34 @@ final class DockController: NSObject {
 
     func applySettings() {
         let s = settings.settings
-        let style = ThemeStyle.style(for: s.theme)
-        let metrics = DockMetrics.make(from: s, tallFloor: style.floor && s.position == .bottom)
-        engine.setMetrics(metrics)
         engine.bounceEnabled = s.bounceOnLaunch && !reduceMotion
         engine.dimHiddenApps = s.dimHiddenApps
         engine.labelsEnabled = s.showLabels
         engine.speed = reduceMotion ? max(s.animationSpeed, 1.5) : s.animationSpeed
         autoHide.mode = s.autoHide
         autoHide.revealDelay = s.revealDelay
+        updateGeometry(force: true)
+        panel.setShowsInFullScreen(s.showInFullScreen)
+        updateOverlapPolling()
+        rebuild(animated: true)
+        reevaluateAutoHide()
+    }
+
+    /// Recomputes metrics (shrinking icons if the dock wouldn't fit on the
+    /// screen) and pushes them to the engine, the view and the window.
+    private func updateGeometry(force: Bool = false) {
+        let s = settings.settings
+        let style = ThemeStyle.style(for: s.theme)
+        let floor = style.floor && s.position == .bottom
+        var available = 0.0
+        if let target = resolveScreen() {
+            let visible = target.visibleFrame
+            available = Double(s.position.isVertical ? visible.height : target.frame.width) - 24
+        }
+        let separators = entries.filter { $0.kind == .separator }.count
+        let metrics = DockMetrics.fitting(s, tallFloor: floor, tiles: entries.count - separators, separators: separators, available: available)
+        guard force || metrics != engine.metrics else { return }
+        engine.setMetrics(metrics)
 
         var configuration = DockView.Configuration()
         configuration.position = s.position
@@ -161,12 +180,7 @@ final class DockController: NSObject {
         configuration.reduceMotion = reduceMotion
         configuration.increaseContrast = increaseContrast
         dockView.setConfiguration(configuration)
-
-        panel.setShowsInFullScreen(s.showInFullScreen)
         updatePanelFrame()
-        updateOverlapPolling()
-        rebuild(animated: true)
-        reevaluateAutoHide()
     }
 
     private func resolveScreen() -> NSScreen? {
@@ -218,6 +232,7 @@ final class DockController: NSObject {
         )
         entries = built
         entriesByID = Dictionary(built.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        updateGeometry()
         engine.setItems(built.map(\.spec), animated: animated)
         icons.retain(only: Set(built.map(\.id)))
         dockView.updateAccessibility(items: built.filter { $0.kind != .separator }.map { ($0.id, name(for: $0.id)) })
@@ -318,7 +333,7 @@ final class DockController: NSObject {
             if now - candidate.since >= 0.35 {
                 followCandidate = nil
                 screen = target
-                updatePanelFrame()
+                updateGeometry(force: true)
                 engine.setRevealed(false, animated: false)
                 engine.setRevealed(true, animated: true)
                 kick()

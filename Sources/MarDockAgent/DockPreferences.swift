@@ -136,8 +136,11 @@ enum AppTerminator {
               pid != clientPID, pid != getpid(),
               !ownBundleIdentifiers.contains(actual.lowercased())
         else { return .failure(.notAllowed) }
-        if app.isHidden == hidden { return .done }
-        let sent = hidden ? app.hide() : app.unhide()
-        return sent ? .done : .failure(.failed)
+        if app.isHidden != hidden {
+            // The returned Bool is unreliable on recent macOS (it can be false
+            // even when the app does hide), so callers check the outcome.
+            _ = hidden ? app.hide() : app.unhide()
+        }
+        return .done
     }
 }

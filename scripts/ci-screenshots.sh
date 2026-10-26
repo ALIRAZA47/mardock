@@ -13,6 +13,9 @@ mkdir -p "$OUT"
 defaults write com.apple.dock autohide -bool true
 defaults write com.apple.dock autohide-delay -float 1000
 killall Dock 2>/dev/null || true
+# Screenshots should show real translucency.
+echo "reduceTransparency: $(defaults read com.apple.universalaccess reduceTransparency 2>&1)"
+defaults write com.apple.universalaccess reduceTransparency -bool false 2>&1 || true
 sleep 3
 
 wait_for() { # file pattern

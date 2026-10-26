@@ -80,6 +80,19 @@ final class SettingsTests: XCTestCase {
         XCTAssertEqual(clean.magnification, DockSettings.defaults.magnification)
     }
 
+    func testMetricsShrinkToFitButNeverGrow() {
+        var s = DockSettings()
+        s.iconSize = 64
+        let roomy = DockMetrics.fitting(s, tiles: 10, separators: 2, available: 2000)
+        XCTAssertEqual(roomy.iconSize, 64)
+        let tight = DockMetrics.fitting(s, tiles: 30, separators: 2, available: 1000)
+        XCTAssertLessThan(tight.iconSize, 64)
+        let needed = 30 * tight.slot + 2 * tight.separatorWidth + 2 * tight.endPadding
+        XCTAssertLessThanOrEqual(needed, 1000)
+        let absurd = DockMetrics.fitting(s, tiles: 500, separators: 0, available: 300)
+        XCTAssertEqual(absurd.iconSize, 16)
+    }
+
     func testMetricsScaleWithIconSize() {
         var s = DockSettings()
         s.iconSize = 40

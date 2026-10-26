@@ -73,21 +73,19 @@ final class AppActions {
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
-    /// Hides or shows an app. The sandbox doesn't let MarDock do this itself,
-    /// so it asks the helper, falling back to a direct request if the helper
-    /// can't be reached.
+    /// Hides or shows an app. Asks directly first; if the sandbox gets in the
+    /// way (the app's state hasn't changed shortly after), asks the helper.
     func setHidden(_ app: NSRunningApplication, _ hidden: Bool) {
-        guard let identifier = app.bundleIdentifier else {
-            _ = hidden ? app.hide() : app.unhide()
-            return
-        }
+        _ = hidden ? app.hide() : app.unhide()
+        guard let identifier = app.bundleIdentifier else { return }
         let pid = app.processIdentifier
         Task {
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            guard app.isHidden != hidden, !app.isTerminated else { return }
             do {
                 try await agent.setHidden(pid: pid, bundleIdentifier: identifier, hidden: hidden)
             } catch {
                 appLog.error("Hide via helper failed: \(error.localizedDescription, privacy: .public)")
-                _ = hidden ? app.hide() : app.unhide()
             }
         }
     }

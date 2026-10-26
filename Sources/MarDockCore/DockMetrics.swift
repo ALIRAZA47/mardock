@@ -48,9 +48,10 @@ public struct DockMetrics: Equatable, Sendable {
 
     /// Metrics derived from user settings. `tallFloor` gives the shelf extra
     /// room below the icons (used by the reflective "Mirror" theme).
-    public static func make(from settings: DockSettings, tallFloor: Bool = false) -> DockMetrics {
+    public static func make(from settings: DockSettings, tallFloor: Bool = false, iconSize override: Double? = nil) -> DockMetrics {
         let s = settings.sanitized()
-        let icon = s.iconSize
+        let requested = override ?? s.iconSize
+        let icon = requested.isFinite ? min(max(requested, 16), DockSettings.iconSizeRange.upperBound) : s.iconSize
         return DockMetrics(
             iconSize: icon,
             spacing: max(5, (icon * 0.15).rounded()),
@@ -62,6 +63,28 @@ public struct DockMetrics: Equatable, Sendable {
             insetTop: max(6, (icon * 0.12).rounded()),
             separatorWidth: max(14, (icon * 0.34).rounded())
         )
+    }
+
+    /// Metrics that fit `tiles` icons and `separators` dividers into
+    /// `available` points, shrinking the icons (like the macOS Dock does) if
+    /// the preferred size doesn't fit. Never grows them.
+    public static func fitting(
+        _ settings: DockSettings,
+        tallFloor: Bool = false,
+        tiles: Int,
+        separators: Int,
+        available: Double
+    ) -> DockMetrics {
+        var metrics = make(from: settings, tallFloor: tallFloor)
+        guard available > 0, tiles + separators > 0 else { return metrics }
+        for _ in 0..<12 {
+            let needed = Double(tiles) * metrics.slot + Double(separators) * metrics.separatorWidth + 2 * metrics.endPadding
+            guard needed > available, metrics.iconSize > 16 else { break }
+            let smaller = max(16, (metrics.iconSize * available / needed).rounded(.down))
+            if smaller >= metrics.iconSize { break }
+            metrics = make(from: settings, tallFloor: tallFloor, iconSize: smaller)
+        }
+        return metrics
     }
 
     public var slot: Double { iconSize + spacing }

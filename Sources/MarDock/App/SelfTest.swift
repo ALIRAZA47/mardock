@@ -43,6 +43,9 @@ enum SelfTest {
     static func run() async -> Bool {
         let agent = AgentClient()
 
+        let workspace = NSWorkspace.shared
+        info("accessibility", "reduceTransparency=\(workspace.accessibilityDisplayShouldReduceTransparency) increaseContrast=\(workspace.accessibilityDisplayShouldIncreaseContrast) reduceMotion=\(workspace.accessibilityDisplayShouldReduceMotion)")
+
         // 1. Sandbox and entitlements.
         check("sandbox-active", ProcessSecurity.isSandboxed)
         check("no-network-entitlement", !ProcessSecurity.hasEntitlement("com.apple.security.network.client"))
@@ -188,6 +191,25 @@ enum SelfTest {
         return condition()
     }
 
+    private static func probeHiding(_ app: NSRunningApplication, agent: AgentClient, label: String) async {
+        let returned = app.hide()
+        let direct = await waitUntil(2) { app.isHidden }
+        _ = app.unhide()
+        _ = await waitUntil(2) { !app.isHidden }
+        var viaHelper = false
+        if let identifier = app.bundleIdentifier,
+           (try? await agent.setHidden(pid: app.processIdentifier, bundleIdentifier: identifier, hidden: true)) != nil {
+            viaHelper = await waitUntil(2) { app.isHidden }
+            _ = try? await agent.setHidden(pid: app.processIdentifier, bundleIdentifier: identifier, hidden: false)
+            _ = await waitUntil(2) { !app.isHidden }
+        }
+        if app.isHidden {
+            _ = app.unhide()
+            _ = await waitUntil(2) { !app.isHidden }
+        }
+        info("hide-\(label)", "direct: returned \(returned), hid \(direct); helper: hid \(viaHelper)")
+    }
+
     private static func launchHideQuit(agent: AgentClient) async {
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.calculator") else {
             check("launch", false, "Calculator not found")
@@ -207,15 +229,8 @@ enum SelfTest {
         check("launch", true, "pid \(app.processIdentifier)")
         _ = await waitUntil(5) { app.isFinishedLaunching }
 
-        // Hiding a background app through the helper.
-        if (try? await agent.setHidden(pid: app.processIdentifier, bundleIdentifier: identifier, hidden: true)) != nil {
-            let hidden = await waitUntil(2) { app.isHidden }
-            info("hide-background-via-helper", "hidden \(hidden)")
-            _ = try? await agent.setHidden(pid: app.processIdentifier, bundleIdentifier: identifier, hidden: false)
-            _ = await waitUntil(2) { !app.isHidden }
-        } else {
-            info("hide-background-via-helper", "request failed")
-        }
+        // How each way of hiding behaves here (informational).
+        await probeHiding(app, agent: agent, label: "background")
 
         // Bringing a running app forward the way the dock does it.
         let activate = NSWorkspace.OpenConfiguration()
@@ -227,24 +242,14 @@ enum SelfTest {
         }
         let activated = await waitUntil(3) { app.isActive || NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier }
         check("activate", activated)
+        await probeHiding(app, agent: agent, label: "frontmost")
 
-        // What the sandbox allows directly (informational).
-        let directHide = app.hide()
-        let hiddenDirectly = await waitUntil(1) { app.isHidden }
-        info("hide-direct", "returned \(directHide), hidden \(hiddenDirectly)")
-        if hiddenDirectly {
-            _ = app.unhide()
-            _ = await waitUntil(1) { !app.isHidden }
-        }
-
-        do {
-            try await agent.setHidden(pid: app.processIdentifier, bundleIdentifier: identifier, hidden: true)
-            check("hide-via-helper", await waitUntil(2) { app.isHidden })
-            try await agent.setHidden(pid: app.processIdentifier, bundleIdentifier: identifier, hidden: false)
-            check("unhide-via-helper", await waitUntil(2) { !app.isHidden })
-        } catch {
-            check("hide-via-helper", false, error.localizedDescription)
-        }
+        // The code path the dock actually uses.
+        let actions = AppActions(agent: agent, pins: PinStore())
+        actions.setHidden(app, true)
+        check("hide", await waitUntil(4) { app.isHidden })
+        actions.setHidden(app, false)
+        check("unhide", await waitUntil(4) { !app.isHidden })
 
         do {
             try await agent.quit(pid: app.processIdentifier, bundleIdentifier: identifier, force: false)
