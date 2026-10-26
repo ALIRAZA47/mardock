@@ -84,6 +84,17 @@ public enum DockIdentity {
         "pid:\(pid)"
     }
 
+    /// A minimized window's tile: stable while the window stays where it is
+    /// in its app's list and keeps its title.
+    public static func window(_ window: WindowInfo) -> String {
+        // FNV-1a: the same in every process, unlike `hashValue`.
+        var hash: UInt32 = 2_166_136_261
+        for byte in window.title.utf8 {
+            hash = (hash ^ UInt32(byte)) &* 16_777_619
+        }
+        return "window:\(window.pid):\(window.index):" + String(hash, radix: 16)
+    }
+
     /// A new identifier for a spacer or divider the user adds.
     public static func newTile(_ kind: UserTileKind) -> String {
         kind.rawValue + ":" + UUID().uuidString.prefix(8).lowercased()
@@ -343,6 +354,8 @@ public struct DockEntry: Equatable, Sendable, Identifiable {
         case divider(title: String)
         case share
         case folder(FolderStack)
+        /// A minimized window; clicking it brings the window back.
+        case window(WindowInfo)
     }
 
     public var id: String
@@ -367,7 +380,7 @@ public struct DockEntry: Equatable, Sendable, Identifiable {
     public var isKept: Bool {
         switch kind {
         case .pinned, .spacer, .divider, .share, .folder: return true
-        case .finder, .running, .recent, .separator, .trash: return false
+        case .finder, .running, .recent, .separator, .trash, .window: return false
         }
     }
 
@@ -379,7 +392,7 @@ public struct DockEntry: Equatable, Sendable, Identifiable {
     public var isApp: Bool {
         switch kind {
         case .finder, .pinned, .running, .recent: return true
-        case .separator, .trash, .spacer, .divider, .share, .folder: return false
+        case .separator, .trash, .spacer, .divider, .share, .folder, .window: return false
         }
     }
 
@@ -406,7 +419,7 @@ public struct DockEntry: Equatable, Sendable, Identifiable {
         case let .divider(title):
             kind = .divider
             hasLabel = !title.isEmpty
-        case .finder, .pinned, .running, .recent, .share, .folder:
+        case .finder, .pinned, .running, .recent, .share, .folder, .window:
             kind = .app
         }
         return DockItemSpec(
@@ -432,7 +445,8 @@ public enum DockContentBuilder {
         launching: Set<String> = [],
         showRunningApps: Bool = true,
         recentLimit: Int = 0,
-        showTrash: Bool = true
+        showTrash: Bool = true,
+        minimized: [WindowInfo] = []
     ) -> [DockEntry] {
         var runningByKey: [String: RunningAppSnapshot] = [:]
         for app in running where runningByKey[app.key] == nil {
@@ -477,8 +491,18 @@ public enum DockContentBuilder {
             entries += extras
         }
 
-        if showTrash {
+        // Minimized windows sit with the Trash, as in the macOS Dock.
+        let windows = minimized.filter(\.isValid).prefix(WindowInfo.maxCount)
+        if showTrash || !windows.isEmpty {
             entries.append(DockEntry(id: DockIdentity.trashSeparator, kind: .separator, running: nil, isLaunching: false))
+        }
+        for window in windows {
+            let id = DockIdentity.window(window)
+            guard !used.contains(id) else { continue }
+            used.insert(id)
+            entries.append(DockEntry(id: id, kind: .window(window), running: nil, isLaunching: false))
+        }
+        if showTrash {
             entries.append(DockEntry(id: DockIdentity.trash, kind: .trash, running: nil, isLaunching: false))
         }
         return entries

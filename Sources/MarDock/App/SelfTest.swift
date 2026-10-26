@@ -156,6 +156,10 @@ enum SelfTest {
             check("open-trash", false, error.localizedDescription)
         }
 
+        // The extras' requests: the Trash check needs no permission; the
+        // Accessibility ones are refused until the user allows MarDock.
+        await checkExtras(agent: agent)
+
         // 7. Launch, hide and quit a real app.
         await launchHideQuit(agent: agent)
 
@@ -244,6 +248,50 @@ enum SelfTest {
         let expected = ["SwitchProfileIntent", "SetThemeIntent", "SetDockPositionIntent", "SetAutoHideIntent", "DockFocusFilter"]
         let missing = expected.filter { !text.contains($0) }
         check("shortcuts-metadata", missing.isEmpty, missing.isEmpty ? files.sorted().joined(separator: ", ") : "missing \(missing.joined(separator: ", "))")
+    }
+
+    private static func checkExtras(agent: AgentClient) async {
+        do {
+            let full = try await agent.trashIsFull()
+            check("trash-state", true, full ? "full" : "empty")
+        } catch {
+            check("trash-state", false, error.localizedDescription)
+        }
+        // Does the count notice a newly trashed file? (Where a sandboxed
+        // app's trashed file goes is up to macOS, so this is information.)
+        if let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+            let probe = base.appendingPathComponent("MarDock trash probe.txt")
+            var trashed: NSURL?
+            if (try? Data("probe".utf8).write(to: probe)) != nil, (try? FileManager.default.trashItem(at: probe, resultingItemURL: &trashed)) != nil {
+                let full = (try? await agent.trashIsFull()).map { $0 ? "full" : "empty" } ?? "unknown"
+                info("trash-after-trashing", "\(full); the file went to \(trashed?.path ?? "?")")
+                if let trashed { try? FileManager.default.removeItem(at: trashed as URL) }
+            }
+        }
+
+        let trusted = (try? await agent.accessibilityTrusted(prompt: false)) ?? false
+        info("accessibility", trusted ? "allowed" : "not allowed")
+        if trusted {
+            do {
+                let windows = try await agent.minimizedWindows()
+                check("minimized-windows", true, "\(windows.count) windows")
+            } catch {
+                check("minimized-windows", false, error.localizedDescription)
+            }
+            do {
+                let badges = try await agent.dockBadges()
+                check("dock-badges", true, badges.map { "\($0.bundleIdentifier)=\($0.label)" }.joined(separator: " "))
+            } catch {
+                check("dock-badges", false, error.localizedDescription)
+            }
+        } else {
+            await expectRefusal("helper-refuses-windows-without-permission", .notAllowed) { _ = try await agent.minimizedWindows() }
+            await expectRefusal("helper-refuses-badges-without-permission", .notAllowed) { _ = try await agent.dockBadges() }
+        }
+        // Never one of MarDock's own windows.
+        let me = WindowInfo(pid: getpid(), bundleIdentifier: Bundle.main.bundleIdentifier ?? "io.github.aliraza47.MarDock", title: "", index: 0)
+        await expectRefusal("helper-refuses-own-windows", .notAllowed) { try await agent.showWindow(me) }
+        info("screen-recording", CGPreflightScreenCaptureAccess() ? "allowed" : "not allowed")
     }
 
     private static func expectRefusal(_ name: String, _ expected: AgentFailure, _ body: () async throws -> Void) async {
@@ -656,7 +704,7 @@ enum DemoMode {
 @MainActor
 final class DemoTour {
     /// How long to record after "TOUR READY": the tour, then a moment's hold.
-    static let seconds = 71
+    static let seconds = 83
     private static var current: DemoTour?
     private static let calculatorBundleIdentifier = "com.apple.calculator"
 
@@ -845,6 +893,48 @@ final class DemoTour {
             }
             await pause(0.6)
         }
+
+        // The extras that need a permission. CI can't grant one, so the tour
+        // hands the dock what the helper would read: badges, a minimized
+        // window by the Trash, and a full Trash.
+        coordinator.settings.update {
+            $0.showBadges = true
+            $0.showMinimizedWindows = true
+            $0.showTrashFull = true
+        }
+        let calculatorPID = coordinator.running.snapshots.first { $0.key == calculator }?.pid ?? 2
+        let minimized = WindowInfo(pid: calculatorPID, bundleIdentifier: Self.calculatorBundleIdentifier, title: "Calculator", index: 0)
+        coordinator.extras.demoShow(
+            badges: [DockIdentity.app("com.apple.mail"): "3", DockIdentity.app("com.apple.MobileSMS"): "12"],
+            minimized: [minimized],
+            trashFull: true
+        )
+        caption.show("Badges · minimized windows · full Trash", over: screen)
+        await pause(1.2)
+        caption.hide()
+        await glide(toTile: DockIdentity.app("com.apple.mail"), over: 0.8)
+        await glide(toTile: DockIdentity.app("com.apple.MobileSMS"), over: 0.6)
+        await pause(0.4)
+        await glide(toTile: DockIdentity.window(minimized), over: 1.0)
+        await pause(0.7)
+        await glide(toTile: DockIdentity.trash, over: 0.5)
+        await pause(0.5)
+        // Window previews are real when the runner allowed Screen Recording.
+        if CGPreflightScreenCaptureAccess() {
+            coordinator.settings.update { $0.windowPreviews = true }
+            await glide(toTile: calculator, over: 0.8)
+            await pause(2.2)
+            await glide(to: NSPoint(x: point.x, y: point.y + 60), over: 0.5)
+            await pause(0.6)
+            coordinator.settings.update { $0.windowPreviews = false }
+        }
+        coordinator.extras.demoShow(badges: [:], minimized: [], trashFull: false)
+        coordinator.settings.update {
+            $0.showBadges = false
+            $0.showMinimizedWindows = false
+            $0.showTrashFull = false
+        }
+        await pause(0.4)
 
         // Auto-hide: it slides away when the pointer leaves, and comes back at the edge.
         coordinator.settings.update { $0.autoHide = .always }

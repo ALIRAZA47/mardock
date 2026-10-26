@@ -123,6 +123,9 @@ final class DockView: NSView {
         apply(lastFrame)
     }
 
+    /// Badge labels by tile id (unread counts and the like).
+    var badges: [String: String] = [:]
+
     /// Forces every tile to fetch its icon again (icons changed or scale changed).
     func reloadImages() {
         for tile in tiles.values { tile.imageKey = "" }
@@ -505,11 +508,13 @@ final class DockView: NSView {
             }
 
             if item.kind.isNarrow {
+                tile.setBadge(nil, size: 0)
                 layoutSeparator(tile, item: item, frame: frame, axis: axis)
                 continue
             }
             if item.kind == .spacer {
                 // An empty slot: nothing to draw.
+                tile.setBadge(nil, size: 0)
                 tile.icon.isHidden = true
                 tile.line.isHidden = true
                 tile.reflection.isHidden = true
@@ -530,6 +535,7 @@ final class DockView: NSView {
             tile.transform = CATransform3DMakeScale(max(sx, 0.01), max(sy, 0.01), 1)
             tile.opacity = Float(item.alpha * frame.opacity)
             tile.icon.frame = tile.bounds
+            tile.setBadge(badges[item.id], size: size)
 
             let key = "\(item.id)#\(pixelSize)"
             if tile.imageKey != key, let image = imageProvider?(item.id, pixelSize) {

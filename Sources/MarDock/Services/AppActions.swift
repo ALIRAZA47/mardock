@@ -34,7 +34,7 @@ final class AppActions {
             return nil
         case .running:
             return nil
-        case .separator, .trash, .spacer, .divider, .share, .folder:
+        case .separator, .trash, .spacer, .divider, .share, .folder, .window:
             return nil
         }
     }
@@ -98,6 +98,20 @@ final class AppActions {
     func quit(_ app: NSRunningApplication, force: Bool) async throws {
         guard let identifier = app.bundleIdentifier else { throw AgentClientError.refused(.notAllowed) }
         try await agent.quit(pid: app.processIdentifier, bundleIdentifier: identifier, force: force)
+    }
+
+    /// Brings back a minimized window (through the helper, which needs
+    /// Accessibility).
+    func showWindow(_ window: WindowInfo, completion: @escaping @MainActor (Bool) -> Void) {
+        Task {
+            do {
+                try await agent.showWindow(window)
+                completion(true)
+            } catch {
+                appLog.error("Couldn't bring the window back: \(error.localizedDescription, privacy: .public)")
+                completion(false)
+            }
+        }
     }
 
     func openTrash() {

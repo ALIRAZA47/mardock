@@ -125,6 +125,15 @@ public struct DockSettings: Codable, Equatable, Sendable {
     public var launchShortcut: LaunchShortcut = .controlOption
     public var showRecentApps = true
     public var recentAppsCount = 3
+    // Extras that need a permission, all off until the user turns them on.
+    /// Badges such as unread counts, read from the macOS Dock (Accessibility).
+    public var showBadges = false
+    /// Minimized windows as tiles next to the Trash (Accessibility).
+    public var showMinimizedWindows = false
+    /// Pictures of an app's windows while hovering its tile (Screen Recording).
+    public var windowPreviews = false
+    /// A full Trash icon while the Trash has something in it.
+    public var showTrashFull = false
 
     public static let iconSizeRange: ClosedRange<Double> = 32...112
     public static let magnificationRange: ClosedRange<Double> = 1.1...2.6
@@ -166,6 +175,7 @@ public struct DockSettings: Codable, Equatable, Sendable {
         case clickToHide, bounceOnLaunch, clickRipple, reflections, indicatorStyle, dimHiddenApps
         case animationSpeed, hideSystemDock, restoreSystemDockOnQuit, showInFullScreen
         case launchShortcut, showRecentApps, recentAppsCount
+        case showBadges, showMinimizedWindows, windowPreviews, showTrashFull
     }
 
     public init(from decoder: Decoder) throws {
@@ -201,6 +211,10 @@ public struct DockSettings: Codable, Equatable, Sendable {
         s.launchShortcut = value(.launchShortcut, s.launchShortcut)
         s.showRecentApps = value(.showRecentApps, s.showRecentApps)
         s.recentAppsCount = value(.recentAppsCount, s.recentAppsCount)
+        s.showBadges = value(.showBadges, s.showBadges)
+        s.showMinimizedWindows = value(.showMinimizedWindows, s.showMinimizedWindows)
+        s.windowPreviews = value(.windowPreviews, s.windowPreviews)
+        s.showTrashFull = value(.showTrashFull, s.showTrashFull)
         self = s.sanitized()
     }
 

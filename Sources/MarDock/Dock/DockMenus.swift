@@ -84,6 +84,11 @@ enum DockMenus {
                 controller?.unpin(entry)
             })
             return menu
+        case .window:
+            menu.addItem(ClosureMenuItem("Show Window", symbol: "macwindow") { [weak controller] in
+                controller?.activate(entry, modifiers: [])
+            })
+            return menu
         case .share:
             let hint = NSMenuItem(title: "Drop files here to share them with AirDrop, Mail or Messages.", action: nil, keyEquivalent: "")
             hint.isEnabled = false

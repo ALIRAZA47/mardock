@@ -251,6 +251,7 @@ struct BehaviorPane: View {
     @EnvironmentObject private var coordinator: AppCoordinator
     @EnvironmentObject private var store: SettingsStore
     @EnvironmentObject private var loginItem: LoginItemManager
+    @EnvironmentObject private var extras: ExtrasMonitor
     @State private var backupMessage: String?
 
     var body: some View {
@@ -310,6 +311,39 @@ struct BehaviorPane: View {
             }
 
             Section {
+                Toggle(isOn: $store.settings.showTrashFull) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Show when the Trash is full")
+                        Text("Reads only how many items are in the Trash, never what they are.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                ExtraToggle(
+                    title: "Notification badges",
+                    detail: "The numbers apps put on their Dock icons, such as unread mail.",
+                    isOn: $store.settings.showBadges,
+                    permission: .accessibility
+                )
+                ExtraToggle(
+                    title: "Minimized windows in the dock",
+                    detail: "Next to the Trash, as in the macOS Dock. Click one to bring it back.",
+                    isOn: $store.settings.showMinimizedWindows,
+                    permission: .accessibility
+                )
+                ExtraToggle(
+                    title: "Window previews",
+                    detail: "Rest the pointer on a running app to see its windows, and click one to bring it forward.",
+                    isOn: $store.settings.windowPreviews,
+                    permission: .screenRecording
+                )
+            } header: {
+                Text("Extras")
+            } footer: {
+                FooterText("These stay off until you turn them on. Badges and minimized windows need Accessibility, which lets MarDock's helper read the badges on the macOS Dock and the titles of minimized windows, and bring a window back when you click it. Previews need Screen Recording: MarDock takes small pictures of the app you're pointing at, shows them and keeps nothing.")
+            }
+
+            Section {
                 Toggle("Open MarDock at login", isOn: Binding(
                     get: { loginItem.isEnabled || loginItem.needsApproval },
                     set: { loginItem.setEnabled($0) }
@@ -353,7 +387,13 @@ struct BehaviorPane: View {
             }
         }
         .formStyle(.grouped)
-        .onAppear { loginItem.refresh() }
+        .onAppear {
+            loginItem.refresh()
+            extras.refreshPermissions()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            extras.refreshPermissions()
+        }
     }
 
     private func exportSettings() {
@@ -404,6 +444,54 @@ struct BehaviorPane: View {
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         coordinator.apply(backup)
         backupMessage = "Imported “\(url.lastPathComponent)”."
+    }
+}
+
+/// A switch for an extra that needs a permission, which says when the
+/// permission is missing and where to give it.
+private struct ExtraToggle: View {
+    enum Permission { case accessibility, screenRecording }
+
+    let title: String
+    let detail: String
+    @Binding var isOn: Bool
+    let permission: Permission
+    @EnvironmentObject private var extras: ExtrasMonitor
+
+    private var allowed: Bool {
+        permission == .accessibility ? extras.accessibilityTrusted : extras.screenRecordingAllowed
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Toggle(isOn: Binding(get: { isOn }, set: { on in
+                isOn = on
+                if on && !allowed { request() }
+            })) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                    Text(detail).font(.callout).foregroundStyle(.secondary)
+                }
+            }
+            if isOn && !allowed {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                    Text(permission == .accessibility ? "Allow MarDock in Accessibility to use this." : "Allow MarDock in Screen Recording to use this.")
+                        .font(.callout)
+                    Spacer()
+                    Button("Open System Settings…") {
+                        ExtrasMonitor.openPrivacySettings(permission == .accessibility ? "Accessibility" : "ScreenCapture")
+                    }
+                }
+            }
+        }
+    }
+
+    private func request() {
+        switch permission {
+        case .accessibility: extras.requestAccessibility()
+        case .screenRecording: extras.requestScreenRecording()
+        }
     }
 }
 
@@ -868,6 +956,8 @@ struct SystemDockDraft: Equatable {
 
 struct PrivacyPane: View {
     @EnvironmentObject private var security: SecurityStatus
+    @EnvironmentObject private var store: SettingsStore
+    @EnvironmentObject private var extras: ExtrasMonitor
 
     var body: some View {
         Form {
@@ -879,7 +969,7 @@ struct PrivacyPane: View {
                         .shadow(color: .green.opacity(0.3), radius: 8, y: 3)
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Private and secure by design").font(.title3.weight(.semibold))
-                        Text("MarDock never connects to the internet, collects nothing, and needs no special permissions. Everything below is read live from macOS — not just claimed.")
+                        Text("MarDock never connects to the internet, collects nothing, and needs no special permissions unless you turn on an extra that does. Everything below is read live from macOS — not just claimed.")
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -926,7 +1016,7 @@ struct PrivacyPane: View {
                 StatusRow(
                     title: "What the helper may do",
                     ok: true,
-                    detail: "Quit, hide or show an app you choose, change the 15 macOS Dock settings listed in this window, read which apps are in your macOS Dock, and open the Trash. Every request is validated; anything else is refused."
+                    detail: "Quit, hide or show an app you choose, change the 15 macOS Dock settings listed in this window, read which apps are in your macOS Dock, open the Trash and say whether it's empty. With Accessibility allowed for the extras you turn on, it also reads the macOS Dock's badges and the titles of minimized windows, and brings back the window you click. Every request is validated; anything else is refused."
                 )
                 HStack {
                     Button {
@@ -951,9 +1041,28 @@ struct PrivacyPane: View {
                 FooterText("The sandbox stops MarDock from quitting or hiding other apps and from changing the macOS Dock, so a tiny helper does exactly those things and nothing more.")
             }
 
-            Section("Permissions MarDock never asks for") {
-                Text("Accessibility · Screen Recording · Input Monitoring · Full Disk Access · Automation · Contacts, Calendars, Photos, Location, Camera and Microphone")
+            Section {
+                let s = store.settings
+                StatusRow(
+                    title: "Accessibility",
+                    ok: (s.showBadges || s.showMinimizedWindows) ? extras.accessibilityTrusted : true,
+                    detail: (s.showBadges || s.showMinimizedWindows)
+                        ? (extras.accessibilityTrusted ? "Allowed, for badges and minimized windows, which you turned on." : "Not allowed yet; badges and minimized windows need it.")
+                        : "Not used. Only badges and minimized windows need it, and they're off."
+                )
+                StatusRow(
+                    title: "Screen Recording",
+                    ok: s.windowPreviews ? extras.screenRecordingAllowed : true,
+                    detail: s.windowPreviews
+                        ? (extras.screenRecordingAllowed ? "Allowed, for window previews, which you turned on. Pictures are taken only while you point at an app, and never kept." : "Not allowed yet; window previews need it.")
+                        : "Not used. Only window previews need it, and they're off."
+                )
+                Text("Never asked for: Input Monitoring · Full Disk Access · Automation · Contacts, Calendars, Photos, Location, Camera and Microphone")
                     .foregroundStyle(.secondary)
+            } header: {
+                Text("Permissions")
+            } footer: {
+                FooterText("Turn the extras on or off in Behaviour ▸ Extras.")
             }
 
             Section("Your data") {
@@ -964,6 +1073,7 @@ struct PrivacyPane: View {
         }
         .formStyle(.grouped)
         .task { await security.refreshHelper() }
+        .onAppear { extras.refreshPermissions() }
     }
 
     private func signatureText(_ signature: CodeSignatureInfo) -> String {

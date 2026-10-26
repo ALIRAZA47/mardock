@@ -25,6 +25,8 @@ final class DockController: NSObject {
     private let icons: IconProvider
     private let actions: AppActions
     private let systemDock: SystemDockManager
+    private let extras: ExtrasMonitor
+    private let previews = WindowPreviews()
     weak var coordinator: AppCoordinator?
 
     private(set) var entries: [DockEntry] = []
@@ -54,7 +56,8 @@ final class DockController: NSObject {
 
     init(
         settings: SettingsStore, pins: PinStore, recents: RecentAppsStore, customIcons: CustomIconStore, themes: ThemeStore,
-        folders: FolderStacks, running: RunningAppsMonitor, icons: IconProvider, actions: AppActions, systemDock: SystemDockManager
+        folders: FolderStacks, running: RunningAppsMonitor, icons: IconProvider, actions: AppActions, systemDock: SystemDockManager,
+        extras: ExtrasMonitor
     ) {
         self.settings = settings
         self.pins = pins
@@ -66,6 +69,7 @@ final class DockController: NSObject {
         self.icons = icons
         self.actions = actions
         self.systemDock = systemDock
+        self.extras = extras
         super.init()
     }
 
@@ -120,6 +124,34 @@ final class DockController: NSObject {
                 self.renderNow()
             }
             .store(in: &cancellables)
+        // The opt-in extras: minimized windows are tiles, badges sit on
+        // tiles, and the Trash shows whether it's full.
+        extras.$minimized
+            .removeDuplicates()
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.rebuild(animated: true) }
+            .store(in: &cancellables)
+        extras.$badges
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] badges in
+                self?.dockView.badges = badges
+                self?.renderNow()
+            }
+            .store(in: &cancellables)
+        extras.$trashFull
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] full in
+                guard let self else { return }
+                self.icons.trashFull = full
+                self.dockView.reloadImages()
+                self.renderNow()
+            }
+            .store(in: &cancellables)
+        previews.onSelect = { [weak self] pid, title in self?.showPreviewedWindow(pid: pid, title: title) }
+        previews.onVisibilityChange = { [weak self] in self?.reevaluateAutoHide() }
 
         listen(NotificationCenter.default, NSApplication.didChangeScreenParametersNotification) { controller in
             controller.updateGeometry(force: true)
@@ -273,7 +305,8 @@ final class DockController: NSObject {
             launching: running.launching,
             showRunningApps: s.showRunningApps,
             recentLimit: s.showRecentApps ? s.recentAppsCount : 0,
-            showTrash: s.showTrash
+            showTrash: s.showTrash,
+            minimized: s.showMinimizedWindows ? extras.minimized : []
         )
         entries = built
         entriesByID = Dictionary(built.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
@@ -295,6 +328,9 @@ final class DockController: NSObject {
         case .trash: return "Trash"
         case .share: return "Share"
         case let .folder(stack): return stack.name
+        case let .window(window):
+            if !window.title.isEmpty { return window.title }
+            return NSRunningApplication(processIdentifier: window.pid)?.localizedName ?? "Window"
         case let .divider(title): return title
         case .separator, .spacer: return ""
         }
@@ -309,7 +345,31 @@ final class DockController: NSObject {
 
     private func step(_ dt: Double) -> Bool {
         dockView.apply(engine.tick(dt))
+        updatePreviewHover()
         return engine.isAnimating
+    }
+
+    /// Window previews follow the tile under the pointer.
+    private func updatePreviewHover() {
+        guard settings.settings.windowPreviews else {
+            if previews.isShown { previews.close() }
+            return
+        }
+        let id = engine.hoveredID
+        let entry = id.flatMap { entriesByID[$0] }
+        previews.hover(entry, anchor: { [weak self] in
+            guard let self, let id else { return .zero }
+            return self.dockView.screenRect(forItem: id)
+        }, position: settings.settings.position)
+    }
+
+    /// A window picked in the previews: its app comes forward, and with
+    /// Accessibility allowed, that window comes to the front.
+    private func showPreviewedWindow(pid: pid_t, title: String) {
+        guard let app = NSRunningApplication(processIdentifier: pid), let identifier = app.bundleIdentifier else { return }
+        app.activate()
+        guard extras.accessibilityTrusted else { return }
+        actions.showWindow(WindowInfo(pid: pid, bundleIdentifier: identifier, title: title, index: 0)) { _ in }
     }
 
     private func kick() {
@@ -328,6 +388,7 @@ final class DockController: NSObject {
         if settings.settings.display == .followMouse {
             considerFollowing(point)
         }
+        previews.pointerMoved(to: point)
         let local = panel.convertPoint(fromScreen: point)
         let p = dockView.dockPoint(for: local)
         let frame = engine.lastFrame
@@ -400,7 +461,7 @@ final class DockController: NSObject {
     // MARK: - Auto-hide
 
     private var holdOpen: Bool {
-        menuIsOpen || sharePickerOpen || stackPanel.isShown || pressed != nil || dragSourceID != nil || externalDropActive
+        menuIsOpen || sharePickerOpen || stackPanel.isShown || previews.isShown || pressed != nil || dragSourceID != nil || externalDropActive
     }
 
     private func reevaluateAutoHide() {
@@ -479,6 +540,16 @@ final class DockController: NSObject {
         case .trash:
             ripple(entry.id)
             actions.openTrash()
+            return
+        case let .window(window):
+            ripple(entry.id)
+            actions.showWindow(window) { [weak self] shown in
+                if shown {
+                    self?.extras.refreshSoon()
+                } else {
+                    NSSound.beep()
+                }
+            }
             return
         case .share:
             // There's nothing to share yet; say what the tile is for.

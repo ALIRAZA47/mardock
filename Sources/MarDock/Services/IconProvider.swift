@@ -10,6 +10,10 @@ final class IconProvider {
     var customIcons: CustomIconStore?
     /// Draws folder tiles.
     var folders: FolderStacks?
+    /// Draws the Trash full (only while that extra is on).
+    var trashFull = false {
+        didSet { if trashFull != oldValue { invalidate(DockIdentity.trash) } }
+    }
     private var images: [String: NSImage] = [:]
     private var bitmaps: [String: CGImage] = [:]
 
@@ -54,7 +58,7 @@ final class IconProvider {
         let workspace = NSWorkspace.shared
         switch entry.kind {
         case .trash:
-            return NSImage(named: NSImage.trashEmptyName) ?? workspace.icon(for: .folder)
+            return NSImage(named: trashFull ? NSImage.trashFullName : NSImage.trashEmptyName) ?? workspace.icon(for: .folder)
         case .finder:
             if let url = workspace.urlForApplication(withBundleIdentifier: DockIdentity.finderBundleIdentifier) {
                 return workspace.icon(forFile: url.path)
@@ -74,12 +78,51 @@ final class IconProvider {
             return Self.dividerImage
         case let .folder(stack):
             return folders?.icon(for: stack) ?? workspace.icon(for: .folder)
+        case let .window(window):
+            let app = running?.icon ?? workspace.urlForApplication(withBundleIdentifier: window.bundleIdentifier).map { workspace.icon(forFile: $0.path) }
+            return Self.windowTile(appIcon: app ?? workspace.icon(for: .applicationBundle))
         case .running, .separator:
             break
         }
         if let icon = running?.icon { return icon }
         if let url = running?.bundleURL { return workspace.icon(forFile: url.path) }
         return workspace.icon(for: .applicationBundle)
+    }
+
+    /// A minimized window: a small window with its app's icon in the corner,
+    /// as the macOS Dock badges a window's picture.
+    static func windowTile(appIcon: NSImage) -> NSImage {
+        NSImage(size: NSSize(width: 256, height: 256), flipped: false) { rect in
+            let window = NSRect(x: rect.minX + 22, y: rect.minY + 44, width: rect.width - 44, height: rect.height - 74)
+            let body = NSBezierPath(roundedRect: window, xRadius: 18, yRadius: 18)
+            NSGraphicsContext.saveGraphicsState()
+            let shadow = NSShadow()
+            shadow.shadowColor = NSColor.black.withAlphaComponent(0.35)
+            shadow.shadowBlurRadius = 10
+            shadow.shadowOffset = NSSize(width: 0, height: -4)
+            shadow.set()
+            NSColor(white: 0.97, alpha: 1).setFill()
+            body.fill()
+            NSGraphicsContext.restoreGraphicsState()
+            // Title bar and its three buttons.
+            NSGraphicsContext.saveGraphicsState()
+            body.addClip()
+            NSColor(white: 0.86, alpha: 1).setFill()
+            NSRect(x: window.minX, y: window.maxY - 34, width: window.width, height: 34).fill()
+            NSGraphicsContext.restoreGraphicsState()
+            for (index, hex) in [UInt32(0xFF5F57), 0xFEBC2E, 0x28C840].enumerated() {
+                NSColor(hex: hex).setFill()
+                NSBezierPath(ovalIn: NSRect(x: window.minX + 16 + CGFloat(index) * 22, y: window.maxY - 24, width: 14, height: 14)).fill()
+            }
+            // A few lines of "content".
+            NSColor(white: 0.8, alpha: 1).setFill()
+            for (index, width) in [0.7, 0.55, 0.62, 0.4].enumerated() {
+                let line = NSRect(x: window.minX + 18, y: window.maxY - 62 - CGFloat(index) * 24, width: (window.width - 36) * width, height: 10)
+                NSBezierPath(roundedRect: line, xRadius: 5, yRadius: 5).fill()
+            }
+            appIcon.draw(in: NSRect(x: rect.maxX - 124, y: rect.minY + 6, width: 116, height: 116))
+            return true
+        }
     }
 
     /// The Share tile: a share symbol on a rounded square, like an app icon.

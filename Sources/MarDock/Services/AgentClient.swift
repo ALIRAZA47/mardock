@@ -77,6 +77,33 @@ final class AgentClient {
         return report
     }
 
+    // MARK: Extras (each needs the user to have turned it on)
+
+    func trashIsFull() async throws -> Bool {
+        guard case let .trash(isFull) = try await send(.trashState) else { throw AgentClientError.unexpectedReply }
+        return isFull
+    }
+
+    /// Whether MarDock may use Accessibility; `prompt` shows macOS's request.
+    func accessibilityTrusted(prompt: Bool) async throws -> Bool {
+        guard case let .accessibility(trusted) = try await send(.accessibilityStatus(prompt: prompt)) else { throw AgentClientError.unexpectedReply }
+        return trusted
+    }
+
+    func dockBadges() async throws -> [DockBadge] {
+        guard case let .badges(badges) = try await send(.dockBadges) else { throw AgentClientError.unexpectedReply }
+        return Array(badges.filter(\.isValid).prefix(DockBadge.maxCount))
+    }
+
+    func minimizedWindows() async throws -> [WindowInfo] {
+        guard case let .windows(windows) = try await send(.minimizedWindows) else { throw AgentClientError.unexpectedReply }
+        return Array(windows.filter(\.isValid).prefix(WindowInfo.maxCount))
+    }
+
+    func showWindow(_ window: WindowInfo) async throws {
+        try await expectDone(.showWindow(window))
+    }
+
     // MARK: Transport
 
     private func expectDone(_ request: AgentRequest) async throws {

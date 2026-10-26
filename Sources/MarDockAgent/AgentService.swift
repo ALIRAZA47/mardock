@@ -98,7 +98,62 @@ final class AgentService: NSObject, MarDockAgentXPC, @unchecked Sendable {
             return
         }
         DispatchQueue.main.async {
-            reply(Self.encode(self.perform(decoded)))
+            // Accessibility work can wait on a busy app: it runs on its own
+            // queue so it never holds up quitting or hiding.
+            if let slow = self.accessibilityWork(for: decoded) {
+                WindowAccess.queue.async { reply(Self.encode(slow())) }
+            } else {
+                reply(Self.encode(self.perform(decoded)))
+            }
+        }
+    }
+
+    private var ownBundleIdentifiers: [String] {
+        [gate.appBundleIdentifier, Bundle.main.bundleIdentifier].compactMap { $0?.lowercased() }
+    }
+
+    /// The checks for the Accessibility requests happen here, on the main
+    /// queue; the returned work runs on `WindowAccess.queue`. Nil for every
+    /// other request.
+    private func accessibilityWork(for request: AgentRequest) -> (() -> AgentReply)? {
+        switch request {
+        case .dockBadges:
+            guard limiter.allow("badges", every: 0.8) else { return { .failure(.rateLimited) } }
+            guard WindowAccess.isTrusted else { return { .failure(.notAllowed) } }
+            guard let dock = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock").first else {
+                return { .failure(.notFound) }
+            }
+            let pid = dock.processIdentifier
+            return { .badges(WindowAccess.badges(dockPID: pid)) }
+
+        case .minimizedWindows:
+            guard limiter.allow("windows", every: 0.8) else { return { .failure(.rateLimited) } }
+            guard WindowAccess.isTrusted else { return { .failure(.notAllowed) } }
+            let own = Set(ownBundleIdentifiers)
+            let apps = NSWorkspace.shared.runningApplications.compactMap { app -> (pid: pid_t, bundleIdentifier: String)? in
+                guard app.activationPolicy == .regular, !app.isTerminated, app.processIdentifier != self.clientPID,
+                      let identifier = app.bundleIdentifier, !own.contains(identifier.lowercased())
+                else { return nil }
+                return (app.processIdentifier, identifier)
+            }
+            return { .windows(WindowAccess.minimizedWindows(of: apps)) }
+
+        case let .showWindow(target):
+            guard limiter.allow("show:\(target.pid)", every: 0.2) else { return { .failure(.rateLimited) } }
+            guard WindowAccess.isTrusted else { return { .failure(.notAllowed) } }
+            // The pid must still belong to the app the dock thinks it is, a
+            // regular app, and never us.
+            guard let app = NSRunningApplication(processIdentifier: target.pid), !app.isTerminated,
+                  let actual = app.bundleIdentifier,
+                  actual.caseInsensitiveCompare(target.bundleIdentifier) == .orderedSame,
+                  app.activationPolicy == .regular,
+                  target.pid != clientPID, target.pid != getpid(),
+                  !ownBundleIdentifiers.contains(actual.lowercased())
+            else { return { .failure(.notAllowed) } }
+            return { WindowAccess.show(target) }
+
+        default:
+            return nil
         }
     }
 
@@ -138,7 +193,7 @@ final class AgentService: NSObject, MarDockAgentXPC, @unchecked Sendable {
                 bundleIdentifier: bundleIdentifier,
                 force: force,
                 clientPID: clientPID,
-                ownBundleIdentifiers: [gate.appBundleIdentifier, Bundle.main.bundleIdentifier].compactMap { $0?.lowercased() }
+                ownBundleIdentifiers: ownBundleIdentifiers
             )
 
         case let .setHidden(pid, bundleIdentifier, hidden):
@@ -148,13 +203,28 @@ final class AgentService: NSObject, MarDockAgentXPC, @unchecked Sendable {
                 bundleIdentifier: bundleIdentifier,
                 hidden: hidden,
                 clientPID: clientPID,
-                ownBundleIdentifiers: [gate.appBundleIdentifier, Bundle.main.bundleIdentifier].compactMap { $0?.lowercased() }
+                ownBundleIdentifiers: ownBundleIdentifiers
             )
 
         case .openTrash:
             guard limiter.allow("trash", every: 0.8) else { return .failure(.rateLimited) }
             let trash = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".Trash", isDirectory: true)
             return NSWorkspace.shared.open(trash) ? .done : .failure(.failed)
+
+        case .trashState:
+            guard limiter.allow("trashState", every: 0.5) else { return .failure(.rateLimited) }
+            return TrashStatus.isFull().map { .trash(isFull: $0) } ?? .failure(.failed)
+
+        case let .accessibilityStatus(prompt):
+            if prompt {
+                guard limiter.allow("prompt", every: 2) else { return .failure(.rateLimited) }
+                return .accessibility(trusted: WindowAccess.requestTrust())
+            }
+            return .accessibility(trusted: WindowAccess.isTrusted)
+
+        case .dockBadges, .minimizedWindows, .showWindow:
+            // Handled by `accessibilityWork(for:)`.
+            return .failure(.invalidRequest)
 
         case .verifyIntegrity:
             guard limiter.allow("verify", every: 2) else { return .failure(.rateLimited) }

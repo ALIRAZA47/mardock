@@ -23,9 +23,16 @@ MarDock collects nothing.
   files you pick yourself in an Open or Save panel (apps to add, images for
   icons, themes and settings files) and the folders you add to the dock (to
   show their newest files) — nothing else on your Mac.
-- **Permissions.** None of the privacy-protected permissions (Accessibility,
-  Screen Recording, Input Monitoring, Automation, Full Disk Access, Contacts,
-  Calendars, Photos, Location, Camera, Microphone) are used or requested.
+- **Extras you turn on.** Off unless you switch them on: a full Trash icon
+  (reads only how many items the Trash holds), notification badges (the
+  badge text on the macOS Dock's icons) and minimized windows (their titles),
+  which need Accessibility, and window previews, which need Screen Recording:
+  small pictures of the windows of the app you point at, shown and never
+  kept or sent anywhere.
+- **Permissions.** Accessibility and Screen Recording only for the extras
+  above, if you turn them on. Input Monitoring, Automation, Full Disk Access,
+  Contacts, Calendars, Photos, Location, Camera and Microphone are never used
+  or requested.
 
 To remove everything MarDock stored, quit it and delete the container folder
 above.

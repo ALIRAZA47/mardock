@@ -12,8 +12,12 @@ final class TileLayer: CALayer {
     let glow = CAGradientLayer()
     let indicator = CALayer()
     let line = CAGradientLayer()
+    /// A badge such as an unread count, at the icon's top-right corner.
+    let badge = CALayer()
+    let badgeText = CATextLayer()
     var imageKey = ""
     private var indicatorColorKey: Int = -1
+    private var badgeKey = ""
 
     override init() {
         super.init()
@@ -61,10 +65,50 @@ final class TileLayer: CALayer {
 
         indicator.opacity = 0
         indicator.shadowOffset = .zero
+
+        badge.isHidden = true
+        badge.backgroundColor = NSColor.systemRed.cgColor
+        badge.borderColor = NSColor.white.withAlphaComponent(0.9).cgColor
+        badge.shadowColor = NSColor.black.cgColor
+        badge.shadowOpacity = 0.3
+        badge.shadowRadius = 2
+        badge.shadowOffset = CGSize(width: 0, height: -1)
+        badgeText.alignmentMode = .center
+        badgeText.foregroundColor = NSColor.white.cgColor
+        badgeText.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
+        badge.addSublayer(badgeText)
+        addSublayer(badge)
+    }
+
+    /// Shows `label` as a badge for an icon `size` points wide, or hides it.
+    func setBadge(_ label: String?, size: CGFloat) {
+        guard let label, !label.isEmpty, size > 0 else {
+            badge.isHidden = true
+            badgeKey = ""
+            return
+        }
+        let key = "\(label)#\(size)"
+        badge.isHidden = false
+        guard key != badgeKey else { return }
+        badgeKey = key
+        let height = (size * 0.36).rounded()
+        let fontSize = height * 0.62
+        let textWidth = ceil((label as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: fontSize, weight: .semibold)]).width)
+        let width = max(height, textWidth + height * 0.6)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        badge.frame = CGRect(x: size - width * 0.82, y: size - height * 0.86, width: width, height: height)
+        badge.cornerRadius = height / 2
+        badge.borderWidth = max(1, height * 0.06)
+        badgeText.fontSize = fontSize
+        badgeText.string = label
+        let lineHeight = ceil(fontSize * 1.2)
+        badgeText.frame = CGRect(x: 0, y: (height - lineHeight) / 2, width: width, height: lineHeight)
+        CATransaction.commit()
     }
 
     func setScale(_ scale: CGFloat) {
-        for layer in [self, icon, reflection, reflectionMask, glow, indicator, line] as [CALayer] {
+        for layer in [self, icon, reflection, reflectionMask, glow, indicator, line, badge, badgeText] as [CALayer] {
             layer.contentsScale = scale
         }
     }

@@ -187,6 +187,24 @@ final class ContentBuilderTests: XCTestCase {
         XCTAssertEqual(entries[2].spec.kind, .separator)
     }
 
+    func testMinimizedWindowsSitWithTheTrash() {
+        let first = WindowInfo(pid: 700, bundleIdentifier: "com.apple.TextEdit", title: "Letter", index: 0)
+        let second = WindowInfo(pid: 700, bundleIdentifier: "com.apple.TextEdit", title: "List", index: 1)
+        let entries = DockContentBuilder.build(items: [], running: [], minimized: [first, second, first])
+        XCTAssertEqual(entries.map(\.id), [
+            DockIdentity.finder, DockIdentity.trashSeparator,
+            DockIdentity.window(first), DockIdentity.window(second), DockIdentity.trash,
+        ])
+        XCTAssertNotEqual(DockIdentity.window(first), DockIdentity.window(second))
+        XCTAssertEqual(DockIdentity.window(first), DockIdentity.window(WindowInfo(pid: 700, bundleIdentifier: "com.apple.TextEdit", title: "Letter", index: 0)))
+        XCTAssertFalse(entries[2].isKept)
+        XCTAssertFalse(entries[2].isApp)
+        XCTAssertTrue(entries[2].spec.hasLabel)
+
+        let noTrash = DockContentBuilder.build(items: [], running: [], showTrash: false, minimized: [first])
+        XCTAssertEqual(noTrash.map(\.id), [DockIdentity.finder, DockIdentity.trashSeparator, DockIdentity.window(first)])
+    }
+
     func testHidingRunningAppsAndTrash() {
         let entries = DockContentBuilder.build(pins: [], running: [running("com.apple.Notes", order: 0)], showRunningApps: false, showTrash: false)
         XCTAssertEqual(entries.map(\.id), [DockIdentity.finder])
@@ -392,6 +410,11 @@ final class AgentWireTests: XCTestCase {
             .setHidden(pid: 502, bundleIdentifier: "com.apple.Notes", hidden: true),
             .openTrash,
             .verifyIntegrity,
+            .trashState,
+            .accessibilityStatus(prompt: true),
+            .dockBadges,
+            .minimizedWindows,
+            .showWindow(WindowInfo(pid: 503, bundleIdentifier: "com.apple.TextEdit", title: "Notes.txt", index: 2)),
         ]
         for request in requests {
             let data = try AgentWire.encode(request)
@@ -405,6 +428,10 @@ final class AgentWireTests: XCTestCase {
             .hello(AgentInfo(protocolVersion: 1, isSandboxed: false, clientRequirement: "cdhash H\"00\"")),
             .systemDock(["autohide": .bool(true), "tilesize": .number(48), "mineffect": .string("genie")]),
             .importedApps([ImportedDockApp(bundleIdentifier: "com.apple.Notes", path: "/System/Applications/Notes.app", name: "Notes")]),
+            .trash(isFull: true),
+            .accessibility(trusted: false),
+            .badges([DockBadge(bundleIdentifier: "com.apple.mail", label: "12")]),
+            .windows([WindowInfo(pid: 503, bundleIdentifier: "com.apple.TextEdit", title: "Notes.txt", index: 0)]),
             .done,
             .failure(.notAllowed),
         ]
@@ -421,6 +448,21 @@ final class AgentWireTests: XCTestCase {
         XCTAssertFalse(AgentWire.isWellFormed(.setHidden(pid: 0, bundleIdentifier: "com.apple.Notes", hidden: true)))
         XCTAssertFalse(AgentWire.isWellFormed(.applySystemDock(changes: [SystemDockChange(key: "persistent-apps", value: .string(""))], restartDock: true)))
         XCTAssertFalse(AgentWire.isWellFormed(.hello(clientVersion: -1)))
+        XCTAssertFalse(AgentWire.isWellFormed(.showWindow(WindowInfo(pid: 1, bundleIdentifier: "com.apple.TextEdit", title: "", index: 0))))
+        XCTAssertFalse(AgentWire.isWellFormed(.showWindow(WindowInfo(pid: 600, bundleIdentifier: "not a bundle", title: "", index: 0))))
+        XCTAssertFalse(AgentWire.isWellFormed(.showWindow(WindowInfo(pid: 600, bundleIdentifier: "com.apple.TextEdit", title: "", index: 4096))))
+    }
+
+    /// Titles and labels from other apps are cleaned and capped before
+    /// anything shows them.
+    func testWindowTitlesAndBadgesAreBounded() {
+        let long = String(repeating: "x", count: 500) + "\u{0}\u{202E}"
+        let window = WindowInfo(pid: 600, bundleIdentifier: "com.apple.TextEdit", title: long, index: 1)
+        XCTAssertEqual(window.title.count, WindowInfo.maxTitleLength)
+        XCTAssertTrue(window.isValid)
+        let badge = DockBadge(bundleIdentifier: "com.apple.mail", label: "123456789012")
+        XCTAssertEqual(badge.label.count, DockBadge.maxLabelLength)
+        XCTAssertFalse(DockBadge(bundleIdentifier: "com.apple.mail", label: "").isValid)
     }
 }
 

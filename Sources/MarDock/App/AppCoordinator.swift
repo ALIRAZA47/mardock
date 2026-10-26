@@ -23,6 +23,7 @@ final class AppCoordinator: NSObject, ObservableObject {
     let loginItem = LoginItemManager()
     let systemDock: SystemDockManager
     let actions: AppActions
+    let extras: ExtrasMonitor
     let dock: DockController
     let security: SecurityStatus
 
@@ -37,9 +38,10 @@ final class AppCoordinator: NSObject, ObservableObject {
         profiles = ProfileStore(pins: pins)
         systemDock = SystemDockManager(agent: agent)
         actions = AppActions(agent: agent, pins: pins)
+        extras = ExtrasMonitor(agent: agent, settings: settings)
         dock = DockController(
             settings: settings, pins: pins, recents: recents, customIcons: customIcons, themes: themes, folders: folders,
-            running: running, icons: icons, actions: actions, systemDock: systemDock
+            running: running, icons: icons, actions: actions, systemDock: systemDock, extras: extras
         )
         security = SecurityStatus(agent: agent)
         super.init()
@@ -52,6 +54,7 @@ final class AppCoordinator: NSObject, ObservableObject {
     func start() {
         running.start()
         recents.start()
+        extras.start()
         dock.start()
         shortcuts.onPress = { [weak self] index in self?.dock.openShortcutTarget(index) }
         settings.$settings
@@ -235,6 +238,7 @@ final class AppCoordinator: NSObject, ObservableObject {
                 .environmentObject(settings)
                 .environmentObject(pins)
                 .environmentObject(profiles)
+                .environmentObject(extras)
                 .environmentObject(customIcons)
                 .environmentObject(themes)
                 .environmentObject(systemDock)

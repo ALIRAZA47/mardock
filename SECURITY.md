@@ -17,7 +17,7 @@ check it yourself.
 │ • the dock, settings, menus  │                                   │ • embedded in MarDock.app      │
 │ • App Sandbox                │ ◀──────────────────────────────── │ • Hardened Runtime, no         │
 │ • no network entitlement     │        typed replies              │   entitlements                 │
-│ • Hardened Runtime           │                                   │ • 7 allowlisted operations     │
+│ • Hardened Runtime           │                                   │ • 12 allowlisted operations    │
 └──────────────────────────────┘                                   └───────────────────────────────┘
 ```
 
@@ -31,8 +31,9 @@ runs inside the **App Sandbox**. Its only entitlements are:
 | `com.apple.security.files.bookmarks.app-scope` | Lets MarDock remember a folder you chose to keep in the dock (a read-only security-scoped bookmark), so it can list that folder's newest files after a restart. |
 
 There is no network entitlement, so the sandbox refuses every socket the app
-could open. There is no Accessibility, Screen Recording, Input Monitoring,
-Automation or Full Disk Access permission, and none is ever requested.
+could open. MarDock asks for no Accessibility or Screen Recording permission
+unless you turn on one of the extras below, and never for Input Monitoring,
+Automation or Full Disk Access.
 
 **Shortcuts actions** (switch profile, set the theme, position, hiding or
 magnification, open Settings) and the **Focus filter** run inside the same
@@ -40,6 +41,23 @@ sandboxed app. Each takes a profile or theme MarDock already has, or one of a
 fixed set of options, and changes nothing but MarDock's own dock. The
 bundle's `Metadata.appintents` folder is the description of those actions
 that Shortcuts reads: data, not code.
+
+### Opt-in extras
+
+Each is off until you turn it on in Settings ▸ Behaviour ▸ Extras, and the
+dock works the same without them.
+
+| Extra | Permission | What it reads or does |
+| --- | --- | --- |
+| Full Trash icon | none | The helper reads the number of entries in `~/.Trash` (a directory attribute): nothing in the Trash is opened or listed. |
+| Notification badges | Accessibility | The helper reads the badge text the macOS Dock shows on each app (`AXStatusLabel`), and that app's identifier. |
+| Minimized windows | Accessibility | The helper lists regular apps' minimized windows (title only) and, when you click one, unminimizes and raises it. The pid must belong to the claimed app, never MarDock itself. |
+| Window previews | Screen Recording | The sandboxed app takes small pictures of the windows of the app you point at (ScreenCaptureKit), shows them, and keeps nothing. |
+
+The Accessibility work runs in the helper, which isn't sandboxed; macOS
+attributes it to MarDock, which is what you allow in System Settings. Its
+requests are refused while the permission is missing, and it never reads
+window contents, text fields or anything outside the list above.
 
 The sandbox correctly forbids two things a dock needs: quitting other apps and
 changing the macOS Dock's preferences (to hide or tune it). Those are done by a
@@ -80,6 +98,11 @@ anything happens:
 | Hide or show an app | Same pid/bundle-ID/regular-app checks (hiding Finder is allowed, as in the macOS Dock). Rate limited. |
 | Open the Trash | No parameters. |
 | Verify integrity | Re-validates both signatures and reports the result. |
+| Is the Trash full | No parameters; reads the entry count of `~/.Trash` only. Rate limited. |
+| Accessibility status | Says whether MarDock may use Accessibility; can show macOS's request (rate limited). |
+| Read Dock badges | Needs Accessibility. Reads only the macOS Dock's items' badge text and app; labels capped at 8 characters, 64 badges. Rate limited. |
+| List minimized windows | Needs Accessibility. Regular apps only, never MarDock; titles cleaned and capped at 80 characters, 32 windows. Rate limited. |
+| Bring back a window | Needs Accessibility. Same pid/bundle-ID/regular-app checks as quitting; never MarDock. Unminimizes, raises and brings forward that one window. Rate limited. |
 
 There is no operation that takes a path to open, a command to run, a script to
 evaluate, or an arbitrary preference key to write.
@@ -91,7 +114,7 @@ evaluate, or an arbitrary preference key to write.
 | No network access | No network entitlement → sandbox denies sockets | Self-test tries to connect and expects `EPERM`; audit fails if either binary imports socket, `URLSession`, Network.framework or similar APIs |
 | No running other code | No `Process`/`NSTask`, `system`, `popen`, `posix_spawn`, `NSAppleScript`, `dlopen` anywhere | Audit scans imported symbols of both binaries (all architectures) |
 | No code injection | Hardened Runtime on both executables, no exception entitlements (library validation stays on) | Audit checks the `runtime` flag and the exact entitlement sets |
-| Least privilege | Sandbox + access only to files and folders you pick; helper allowlist | Audit (entitlements), self-test (helper refuses unknown keys, out-of-range values, garbage, protected apps, pid mismatches) |
+| Least privilege | Sandbox + access only to files and folders you pick; helper allowlist; Accessibility and Screen Recording only for extras you turn on | Audit (entitlements), self-test (helper refuses unknown keys, out-of-range values, garbage, protected apps, pid mismatches, and window requests without Accessibility) |
 | Tamper evidence | Signed bundle; helper validates the app and fails closed | Settings ▸ Privacy & Security ▸ Verify App Integrity |
 | Robust parsing | Every external input is bounded and validated: settings, pinned apps, XPC messages, the Dock's plist, dragged files | Unit tests with hostile inputs |
 | Reversible changes | Original macOS Dock values are saved before hiding and restored on quit | Self-test, manual recovery below |
