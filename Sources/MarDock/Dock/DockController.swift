@@ -62,7 +62,6 @@ final class DockController: NSObject {
         dockView.delegate = self
         dockView.imageProvider = { [weak self] id, pixels in self?.bitmap(for: id, pixels: pixels) }
         dockView.nameProvider = { [weak self] id in self?.name(for: id) ?? "" }
-        driver.attach(to: dockView)
         driver.onFrame = { [weak self] dt in self?.step(dt) ?? false }
         mouse.onMove = { [weak self] point in self?.pointerMoved(to: point) }
 
@@ -100,6 +99,9 @@ final class DockController: NSObject {
         applySettings()
         rebuild(animated: false)
         panel.orderFrontRegardless()
+        // The display link follows the screen the view is on, so create it
+        // once the window is up.
+        driver.attach(to: dockView)
         mouse.start()
         renderNow()
     }
@@ -574,6 +576,10 @@ extension DockController: DockViewDelegate {
             menu = DockMenus.dockMenu(controller: self, settings: settings, coordinator: coordinator)
         }
         showMenu(menu, at: local)
+    }
+
+    func dockViewPointerMoved(_ view: DockView) {
+        pointerMoved(to: NSEvent.mouseLocation)
     }
 
     func dockView(_ view: DockView, accessibilityPress id: String) {

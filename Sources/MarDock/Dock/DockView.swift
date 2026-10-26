@@ -14,6 +14,7 @@ protocol DockViewDelegate: AnyObject {
     func dockView(_ view: DockView, dragSession session: NSDraggingSession, movedTo screenPoint: NSPoint)
     func dockView(_ view: DockView, dragSessionEndedAt screenPoint: NSPoint, operation: NSDragOperation)
     func dockView(_ view: DockView, accessibilityPress id: String)
+    func dockViewPointerMoved(_ view: DockView)
 }
 
 extension NSPasteboard.PasteboardType {
@@ -818,6 +819,28 @@ final class DockView: NSView {
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override var mouseDownCanMoveWindow: Bool { false }
+
+    /// While the window accepts the mouse, a tracking area delivers full-rate
+    /// pointer movement even though MarDock is never the active app (the
+    /// controller's event monitors pick these events up).
+    private var pointerTracking: NSTrackingArea?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let pointerTracking { removeTrackingArea(pointerTracking) }
+        let area = NSTrackingArea(
+            rect: .zero,
+            options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        pointerTracking = area
+    }
+
+    override func mouseMoved(with event: NSEvent) { delegate?.dockViewPointerMoved(self) }
+    override func mouseEntered(with event: NSEvent) { delegate?.dockViewPointerMoved(self) }
+    override func mouseExited(with event: NSEvent) { delegate?.dockViewPointerMoved(self) }
 
     override func mouseDown(with event: NSEvent) { delegate?.dockView(self, mouseDown: event) }
     override func mouseDragged(with event: NSEvent) { delegate?.dockView(self, mouseDragged: event) }

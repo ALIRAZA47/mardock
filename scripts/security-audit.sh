@@ -41,18 +41,22 @@ AGENT_KEYS="$(entitlement_keys "$AGENT")"
 
 echo "Imported symbols"
 # Anything that could talk to the network, start processes, run scripts or
-# load code at runtime. (`kill` is allowed: the helper uses it to restart the Dock.)
-FORBIDDEN='(^_socket$|^_connect$|^_getaddrinfo$|^_gethostbyname|^_nw_|URLSession|NSURLConnection|CFSocket|CFStreamCreatePairWithSocket|^_system$|^_popen$|^_posix_spawn|^_execv|^_execl|^_fork$|^_vfork$|NSTask|7ProcessC|NSAppleScript|OSAScript|AuthorizationExecuteWithPrivileges|^_dlopen$|^_dlsym$|NSUserScriptTask|WKWebView)'
+# load code at runtime. Notes: `kill` is allowed (the helper uses it to restart
+# the Dock); `dlsym` is allowed because Swift's runtime support code uses it to
+# look up symbols in libraries that are already loaded — loading new code
+# needs `dlopen`, which is forbidden (and blocked by library validation anyway).
+FORBIDDEN='(^_socket$|^_connect$|^_getaddrinfo$|^_gethostbyname|^_nw_|URLSession|NSURLConnection|CFSocket|CFStreamCreatePairWithSocket|^_system$|^_popen$|^_posix_spawn|^_execv|^_execl|^_fork$|^_vfork$|NSTask|7ProcessC|NSAppleScript|OSAScript|AuthorizationExecuteWithPrivileges|^_dlopen$|^_dlopen_preflight$|NSUserScriptTask|WKWebView)'
 for binary in "$APP/Contents/MacOS/MarDock" "$AGENT/Contents/MacOS/MarDockAgent"; do
   name="$(basename "$binary")"
   hits=""
   for arch in $(lipo -archs "$binary"); do
-    hits+="$(nm -u -arch "$arch" "$binary" 2>/dev/null | sed 's/^ *//' | grep -E "$FORBIDDEN" || true)"
+    hits+="$(nm -u -arch "$arch" "$binary" 2>/dev/null | sed 's/^ *//' | grep -E "$FORBIDDEN" || true)"$'\n'
   done
+  hits="$(printf '%s' "$hits" | sed '/^$/d' | sort -u)"
   if [[ -z "$hits" ]]; then
     pass "$name imports no network/process/scripting/dlopen APIs"
   else
-    fail "$name imports forbidden symbols:"; echo "$hits" | sort -u | sed 's/^/      /'
+    fail "$name imports forbidden symbols:"; echo "$hits" | sed 's/^/      /'
   fi
   if otool -L "$binary" | grep -Eq 'Network.framework|WebKit.framework|CFNetwork.framework'; then
     fail "$name links a networking framework"
