@@ -48,6 +48,8 @@ final class FrameDriver: NSObject {
 @MainActor
 final class MouseTracker {
     var onMove: ((NSPoint) -> Void)?
+    /// A pretend pointer that stands in for the real one (self-test tours only).
+    var simulatedLocation: NSPoint?
     private var globalMonitor: Any?
     private var localMonitor: Any?
     private var pollTimer: Timer?
@@ -84,7 +86,7 @@ final class MouseTracker {
     func refresh() { emit(force: true) }
 
     private func emit(force: Bool) {
-        let point = NSEvent.mouseLocation
+        let point = simulatedLocation ?? NSEvent.mouseLocation
         guard force || point != lastPoint else { return }
         lastPoint = point
         onMove?(point)

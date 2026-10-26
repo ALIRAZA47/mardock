@@ -339,12 +339,21 @@ enum DemoMode {
             s.position = value("--position").flatMap(DockPosition.init(rawValue:)) ?? .bottom
             s.hideSystemDock = false
         }
-        coordinator.pins.setPins(PinStore.defaultPins())
+        let touring = arguments.contains("--tour")
+        var pins = PinStore.defaultPins()
+        if touring, let calculator = AppCatalog.pinnedApp(bundleIdentifier: "com.apple.calculator") {
+            pins.append(calculator)
+        }
+        coordinator.pins.setPins(pins)
         if arguments.contains("--backdrop") {
             showBackdrop()
         }
         coordinator.running.start()
         coordinator.dock.start()
+        if touring {
+            DemoTour.start(coordinator)
+            return
+        }
         coordinator.dock.stopPointerTracking()
 
         switch value("--window") {
@@ -418,6 +427,172 @@ enum DemoMode {
                 fflush(stdout)
             }
         }
+    }
+}
+
+/// `--demo --tour`: plays a scripted tour of the real dock for CI to record.
+/// A pretend pointer drives the dock through the same path as real mouse
+/// movement; the click, the menus and the settings changes are the real ones.
+@MainActor
+final class DemoTour {
+    /// About how long the tour runs, for the recorder.
+    static let seconds = 38
+    private static var current: DemoTour?
+
+    private let coordinator: AppCoordinator
+    private let cursor = PretendCursor()
+    private var point = NSPoint.zero
+    private var dock: DockController { coordinator.dock }
+    private var screen: NSRect { NSScreen.screens.first?.frame ?? .zero }
+
+    private init(coordinator: AppCoordinator) {
+        self.coordinator = coordinator
+    }
+
+    static func start(_ coordinator: AppCoordinator) {
+        let tour = DemoTour(coordinator: coordinator)
+        current = tour
+        CGDisplayHideCursor(CGMainDisplayID())
+        tour.move(to: NSPoint(x: tour.screen.midX, y: tour.screen.minY + tour.screen.height * 0.55))
+        tour.cursor.show()
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            // The recorder starts on this line; give it a moment before the first move.
+            print("TOUR READY \(seconds)")
+            fflush(stdout)
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            await tour.run()
+            print("TOUR DONE")
+            fflush(stdout)
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            exit(0)
+        }
+    }
+
+    private func run() async {
+        let calculator = DockIdentity.app("com.apple.calculator")
+        guard let first = center(of: DockIdentity.finder), let last = center(of: DockIdentity.trash) else {
+            print("TOUR FAIL the dock has no tiles")
+            return
+        }
+        let middle = (first.x + last.x) / 2
+
+        // Hover: icons swell under the pointer and their names float above.
+        await glide(to: NSPoint(x: first.x + 30, y: first.y), over: 1.0)
+        await glide(to: NSPoint(x: last.x - 20, y: first.y), over: 2.8)
+        await glide(to: NSPoint(x: middle, y: first.y), over: 1.2)
+
+        // Open an app: it bounces while it launches, then its light comes on.
+        if let target = center(of: calculator) { await glide(to: target, over: 0.8) }
+        dock.demoClick(calculator)
+        await pause(2.6)
+
+        // Its menu, then Hide: the icon dims.
+        if let target = center(of: calculator) { await glide(to: target, over: 0.3) }
+        dock.demoMenu(for: calculator, choosing: "Hide", after: 1.6)
+        await pause(0.8)
+
+        // Every theme.
+        for theme in [ThemeID.aurora, .midnight, .sunset, .liquid, .mirror, .minimal, .glass] {
+            coordinator.settings.update { $0.theme = theme }
+            await sweep(around: middle, over: 1.4)
+        }
+
+        // Auto-hide: it slides away when the pointer leaves, and comes back at the edge.
+        coordinator.settings.update { $0.autoHide = .always }
+        await glide(to: NSPoint(x: point.x, y: screen.midY), over: 0.8)
+        await pause(1.0)
+        await glide(to: NSPoint(x: screen.midX, y: screen.minY + 0.5), over: 0.9)
+        await pause(1.2)
+        await glide(to: NSPoint(x: screen.midX, y: center(of: DockIdentity.finder)?.y ?? first.y), over: 0.5)
+        coordinator.settings.update { $0.autoHide = .off }
+        await pause(0.6)
+
+        // On the left side of the screen.
+        coordinator.settings.update { $0.position = .left }
+        await pause(0.9)
+        if let top = center(of: DockIdentity.finder), let bottom = center(of: DockIdentity.trash) {
+            await glide(to: NSPoint(x: top.x, y: top.y - 20), over: 0.8)
+            await glide(to: NSPoint(x: top.x, y: bottom.y + 20), over: 2.2)
+        }
+        coordinator.settings.update { $0.position = .bottom }
+        await pause(1.0)
+
+        // Quit the app from its menu: the light fades.
+        if let target = center(of: calculator) { await glide(to: target, over: 0.8) }
+        dock.demoMenu(for: calculator, choosing: "Quit", after: 1.4)
+        await glide(to: NSPoint(x: point.x, y: screen.midY), over: 1.0)
+        await pause(1.5)
+    }
+
+    private func center(of id: String) -> NSPoint? {
+        let rect = dock.dockView.screenRect(forItem: id)
+        return rect == .zero ? nil : NSPoint(x: rect.midX, y: rect.midY)
+    }
+
+    private func move(to p: NSPoint) {
+        point = p
+        dock.demoPointer(at: p)
+        cursor.move(to: p)
+        // Best effort: keep the real (hidden) pointer under the pretend one.
+        CGWarpMouseCursorPosition(CGPoint(x: p.x, y: screen.maxY - p.y))
+    }
+
+    private func glide(to target: NSPoint, over seconds: Double) async {
+        let from = point
+        let steps = max(1, Int(seconds * 60))
+        for i in 1...steps {
+            let t = Double(i) / Double(steps)
+            let e = t < 0.5 ? 4 * t * t * t : 1 - pow(-2 * t + 2, 3) / 2
+            move(to: NSPoint(x: from.x + (target.x - from.x) * e, y: from.y + (target.y - from.y) * e))
+            try? await Task.sleep(nanoseconds: 16_666_667)
+        }
+    }
+
+    private func sweep(around x: CGFloat, over seconds: Double) async {
+        let row = center(of: DockIdentity.finder)?.y ?? point.y
+        await glide(to: NSPoint(x: x - 110, y: row), over: seconds / 2)
+        await glide(to: NSPoint(x: x + 110, y: row), over: seconds / 2)
+    }
+
+    private func pause(_ seconds: Double) async {
+        try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+    }
+}
+
+/// The arrow a recording shows in place of the real pointer.
+@MainActor
+final class PretendCursor {
+    private let window: NSPanel
+    private let image = NSCursor.arrow.image
+    private let hotSpot = NSCursor.arrow.hotSpot
+
+    init() {
+        window = NSPanel(
+            contentRect: NSRect(origin: .zero, size: image.size),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.hasShadow = false
+        window.ignoresMouseEvents = true
+        window.level = .screenSaver
+        window.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+        window.isReleasedWhenClosed = false
+        let view = NSImageView(frame: NSRect(origin: .zero, size: image.size))
+        view.image = image
+        window.contentView = view
+    }
+
+    func show() {
+        window.orderFrontRegardless()
+    }
+
+    /// Puts the arrow's tip at `point` (screen coordinates).
+    func move(to point: NSPoint) {
+        window.setFrameOrigin(NSPoint(x: point.x - hotSpot.x, y: point.y - (image.size.height - hotSpot.y)))
     }
 }
 

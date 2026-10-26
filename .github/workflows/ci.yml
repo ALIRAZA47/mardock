@@ -54,6 +54,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: scripts/ci-screenshots.sh build/selftest/MarDock.app build/screenshots
 
+      - name: Record a tour of the dock
+        if: ${{ !cancelled() }}
+        run: scripts/ci-record-tour.sh build/selftest/MarDock.app build/tour
+
       - name: Package
         run: ditto -c -k --keepParent build/MarDock.app build/MarDock.zip
 
@@ -68,3 +72,10 @@ jobs:
         with:
           name: screenshots
           path: build/screenshots
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: tour-video
+          path: build/tour
+          if-no-files-found: ignore

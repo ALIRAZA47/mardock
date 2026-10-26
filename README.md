@@ -77,7 +77,9 @@ access and asks for no special permissions.
 </table>
 
 <sub>Screenshots are taken automatically by CI on a macOS 15 runner (over a test
-backdrop). On macOS 26 the Liquid theme uses the system's real Liquid Glass.</sub>
+backdrop), and every run also records the real app touring the dock (the
+**tour-video** artifact). On macOS 26 the Liquid theme uses the system's real
+Liquid Glass.</sub>
 
 ## Security and privacy
 

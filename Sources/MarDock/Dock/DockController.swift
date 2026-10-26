@@ -765,3 +765,44 @@ extension NSScreen {
         (deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
     }
 }
+
+#if MARDOCK_SELFTEST
+// Hooks for the self-test build's scripted tour (SelfTest.swift); never in release builds.
+extension DockController {
+    /// Moves the dock's pointer as if the mouse were at `point` (screen
+    /// coordinates), through the same path real mouse movement takes.
+    func demoPointer(at point: NSPoint) {
+        mouse.simulatedLocation = point
+        mouse.refresh()
+    }
+
+    /// Clicks a tile: the press, then whatever a real click does.
+    func demoClick(_ id: String) {
+        guard let entry = entriesByID[id] else { return }
+        engine.setPressed(id)
+        kick()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.engine.setPressed(nil)
+                self.activate(entry, modifiers: [])
+                self.kick()
+            }
+        }
+    }
+
+    /// Opens a tile's menu for `seconds`, then picks the item titled `title`.
+    func demoMenu(for id: String, choosing title: String, after seconds: TimeInterval) {
+        guard let entry = entriesByID[id], let rect = dockView.iconRect(for: id) else { return }
+        let menu = DockMenus.menu(for: entry, controller: self)
+        let close = Timer(timeInterval: seconds, repeats: false) { _ in
+            MainActor.assumeIsolated { menu.cancelTracking() }
+        }
+        RunLoop.main.add(close, forMode: .common)
+        showMenu(menu, at: NSPoint(x: rect.midX, y: rect.midY))
+        if let index = menu.items.firstIndex(where: { $0.title == title }) {
+            menu.performActionForItem(at: index)
+        }
+    }
+}
+#endif
