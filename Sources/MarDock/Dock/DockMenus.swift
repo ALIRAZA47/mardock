@@ -174,6 +174,21 @@ enum DockMenus {
         }
     }
 
+    /// The profiles, the one in use ticked, and New Profile….
+    static func profileMenu(profiles: ProfileStore, controller: DockController?) -> NSMenu {
+        let menu = NSMenu()
+        for profile in profiles.profiles {
+            menu.addItem(ClosureMenuItem(profile.name, state: profile.id == profiles.activeID ? .on : .off) { [weak profiles] in
+                profiles?.activate(profile.id)
+            })
+        }
+        menu.addItem(.separator())
+        menu.addItem(ClosureMenuItem("New Profile…", symbol: "plus") { [weak controller] in
+            controller?.newProfile()
+        })
+        return menu
+    }
+
     /// The menu for the dock itself. `u` is where it was opened, so new
     /// spacers and dividers land there.
     static func dockMenu(controller: DockController, settings: SettingsStore, coordinator: AppCoordinator?, at u: Double?) -> NSMenu {
@@ -229,6 +244,13 @@ enum DockMenus {
         menu.addItem(ClosureMenuItem("Magnification", symbol: "plus.magnifyingglass", state: s.magnificationEnabled ? .on : .off) { [weak settings] in
             settings?.update { $0.magnificationEnabled.toggle() }
         })
+
+        if let profiles = coordinator?.profiles {
+            let profileItem = NSMenuItem(title: "Profile", action: nil, keyEquivalent: "")
+            profileItem.image = NSImage(systemSymbolName: "person.2", accessibilityDescription: nil)
+            profileItem.submenu = profileMenu(profiles: profiles, controller: controller)
+            menu.addItem(profileItem)
+        }
 
         menu.addItem(.separator())
         menu.addItem(ClosureMenuItem("Add Spacer", symbol: "rectangle.dashed") { [weak controller] in

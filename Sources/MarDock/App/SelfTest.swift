@@ -9,6 +9,7 @@
 
 import AppKit
 import MarDockCore
+import SwiftUI
 import UniformTypeIdentifiers
 
 @MainActor
@@ -93,6 +94,9 @@ enum SelfTest {
         // Folder stacks: bookmark a folder, open it again through the
         // bookmark, list its newest files and draw the stack.
         checkFolderStack()
+
+        // Profiles keep their own items, swap them in and survive a relaunch.
+        checkProfiles()
 
         // 4. The helper.
         do {
@@ -188,6 +192,33 @@ enum SelfTest {
         let names = files.map(\.url.lastPathComponent)
         let drawn = IconProvider.render(stacks.icon(for: stack), pixels: 64) != nil
         check("folder-stack", names.first == "Newest.txt" && names.count == 3 && drawn, names.joined(separator: ", "))
+    }
+
+    private static func checkProfiles() {
+        let suite = "io.github.aliraza47.mardock.selftest.profiles"
+        guard let defaults = UserDefaults(suiteName: suite) else {
+            check("profiles", false, "no defaults suite")
+            return
+        }
+        defaults.removePersistentDomain(forName: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let pins = PinStore(defaults: defaults)
+        let profiles = ProfileStore(pins: pins, defaults: defaults)
+        let first = profiles.activeID
+        let firstItems = pins.items
+        let second = profiles.create(named: "Self-test")
+        pins.insert(.newSpacer())
+        let secondItems = pins.items
+        profiles.activate(first)
+        let restored = pins.items == firstItems
+        if let second { profiles.activate(second) }
+        let swapped = pins.items == secondItems
+        let reloaded = ProfileStore(pins: PinStore(defaults: defaults), defaults: defaults)
+        check(
+            "profiles",
+            second != nil && restored && swapped && reloaded.profiles.count == 2 && reloaded.activeID == second,
+            "restored \(restored), swapped \(swapped), \(reloaded.profiles.count) after a relaunch"
+        )
     }
 
     private static func expectRefusal(_ name: String, _ expected: AgentFailure, _ body: () async throws -> Void) async {
@@ -399,7 +430,21 @@ enum DemoMode {
             // Third in the dock, so ⌃⌥3 reaches it.
             pins.insert(calculator, at: min(1, pins.count))
         }
-        coordinator.pins.setPins(pins)
+        // Start clean, with a Work and a Personal profile.
+        for id in coordinator.customIcons.iconIDs {
+            coordinator.customIcons.removeIcon(for: id)
+        }
+        for theme in coordinator.themes.custom {
+            coordinator.themes.delete(theme.id)
+        }
+        let personal = personalApps.compactMap { AppCatalog.pinnedApp(bundleIdentifier: $0) }
+        coordinator.profiles.replace(with: DockProfiles(
+            profiles: [
+                DockProfile(name: "Work", items: pins.map(DockItem.app)),
+                DockProfile(name: "Personal", items: personal.map(DockItem.app)),
+            ],
+            activeID: nil
+        ))
         if arguments.contains("--backdrop") {
             showBackdrop()
         }
@@ -416,8 +461,15 @@ enum DemoMode {
 
         switch value("--window") {
         case "settings":
-            coordinator.showSettings()
+            if let pane = value("--pane").flatMap(SettingsView.Pane.init(rawValue:)) {
+                coordinator.showSettings(pane: pane)
+            } else {
+                coordinator.showSettings()
+            }
             reportWindow(titled: "MarDock Settings")
+        case "theme-editor":
+            showThemeEditor(neonCandy, coordinator: coordinator, nearTop: false)
+            reportWindow(titled: "Theme Editor")
         case "welcome":
             coordinator.showWelcome()
             reportWindow(titled: "Welcome to MarDock")
@@ -431,6 +483,78 @@ enum DemoMode {
                 }
             }
         }
+    }
+
+    /// The Personal profile's apps (those this Mac has).
+    static let personalApps = [
+        "com.apple.Safari", "com.apple.MobileSMS", "com.apple.FaceTime", "com.apple.Photos", "com.apple.Music",
+        "com.apple.TV", "com.apple.podcasts", "com.apple.Maps", "com.apple.weather", "com.apple.Chess",
+    ]
+
+    /// A theme as someone might make in the theme editor.
+    static var neonCandy: ThemeRecipe {
+        var r = ThemeRecipe.builtIn(.midnight).duplicate(named: "Neon Candy")
+        r.tint = [ThemeColor(hex: 0x2A0845), ThemeColor(hex: 0x4B1D7A), ThemeColor(hex: 0x0B3A5B)]
+        r.tintOpacity = 0.58
+        r.aurora = [ThemeColor(hex: 0xFF4FD8), ThemeColor(hex: 0x00E5FF), ThemeColor(hex: 0xFFD86F)]
+        r.auroraOpacity = 0.42
+        r.borderStart = ThemeColor(hex: 0xFF4FD8, alpha: 0.95)
+        r.borderEnd = ThemeColor(hex: 0x00E5FF, alpha: 0.85)
+        r.borderWidth = 1.4
+        r.edgeGlow = ThemeColor(hex: 0xFF4FD8)
+        r.accent = ThemeColor(hex: 0xFF4FD8)
+        r.indicatorGlow = 1
+        r.cornerFactor = 0.4
+        r.swatch = [ThemeColor(hex: 0xFF4FD8), ThemeColor(hex: 0x00E5FF)]
+        return r.sanitized()
+    }
+
+    /// The theme editor in a window of its own (in the app it's a sheet on
+    /// Settings), near the top of the screen or in the middle.
+    @discardableResult
+    static func showThemeEditor(_ recipe: ThemeRecipe, coordinator: AppCoordinator, nearTop: Bool) -> NSWindow {
+        let root = ThemeEditor(recipe: recipe)
+            .environmentObject(coordinator.settings)
+            .environmentObject(coordinator.themes)
+        let window = NSWindow(contentViewController: NSHostingController(rootView: root))
+        window.title = "Theme Editor"
+        window.styleMask = [.titled, .closable, .fullSizeContentView]
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.isReleasedWhenClosed = false
+        window.center()
+        if nearTop, let screen = NSScreen.screens.first {
+            let frame = window.frame
+            window.setFrameOrigin(NSPoint(x: screen.frame.midX - frame.width / 2, y: screen.frame.maxY - frame.height - 6))
+        }
+        NSApp.activate()
+        window.makeKeyAndOrderFront(nil)
+        return window
+    }
+
+    /// Sample files for the tour's Downloads stack, newest first.
+    static func makeTourDownloads() -> FolderStack? {
+        let fileManager = FileManager.default
+        guard let base = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return nil }
+        let folder = base.appendingPathComponent("Tour", isDirectory: true).appendingPathComponent("Downloads", isDirectory: true)
+        try? fileManager.removeItem(at: folder)
+        let names = [
+            "Holiday photos.zip", "Boarding pass.pdf", "Screenshot.png", "Launch film.mov",
+            "Demo song.m4a", "Notes from today.txt", "Budget.csv", "Website.html",
+        ]
+        do {
+            try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
+            for (index, name) in names.enumerated() {
+                let file = folder.appendingPathComponent(name)
+                try Data(name.utf8).write(to: file)
+                try fileManager.setAttributes([.modificationDate: Date(timeIntervalSinceNow: Double(-index) * 3600)], ofItemAtPath: file.path)
+            }
+        } catch {
+            return nil
+        }
+        guard var stack = FolderStacks.makeStack(for: folder) else { return nil }
+        stack.sorting = .dateModified
+        return stack
     }
 
     private static var backdrop: NSWindow?
@@ -502,7 +626,7 @@ enum DemoMode {
 @MainActor
 final class DemoTour {
     /// How long to record after "TOUR READY": the tour, then a moment's hold.
-    static let seconds = 54
+    static let seconds = 71
     private static var current: DemoTour?
     private static let calculatorBundleIdentifier = "com.apple.calculator"
 
@@ -514,6 +638,8 @@ final class DemoTour {
     private var due = 0.0
     private var activity: NSObjectProtocol?
     private var activationObserver: NSObjectProtocol?
+    /// A Downloads folder with a few files, for the folder stack.
+    private var downloads: FolderStack?
     private var dock: DockController { coordinator.dock }
     private var screen: NSRect { NSScreen.screens.first?.frame ?? .zero }
     private var elapsed: Double { ProcessInfo.processInfo.systemUptime - began }
@@ -560,6 +686,7 @@ final class DemoTour {
             guard app?.bundleIdentifier != demoed else { return }
             MainActor.assumeIsolated { DemoMode.raiseBackdrop() }
         }
+        downloads = DemoMode.makeTourDownloads()
         move(to: NSPoint(x: screen.midX, y: screen.minY + screen.height * 0.55))
     }
 
@@ -603,6 +730,22 @@ final class DemoTour {
             await glide(to: NSPoint(x: middle + 110, y: row), over: 0.6)
         }
 
+        // A theme of one's own, from the theme editor: over its live
+        // preview, down its controls, then Save.
+        let recipe = DemoMode.neonCandy
+        let editor = DemoMode.showThemeEditor(recipe, coordinator: coordinator, nearTop: true)
+        let sheet = editor.frame
+        await glide(to: NSPoint(x: sheet.midX + 90, y: sheet.maxY - 110), over: 0.9)
+        await glide(to: NSPoint(x: sheet.midX + 160, y: sheet.midY + 20), over: 0.9)
+        await glide(to: NSPoint(x: sheet.maxX - 46, y: sheet.minY + 27), over: 0.9)
+        await pause(0.3)
+        editor.close()
+        coordinator.themes.save(recipe)
+        coordinator.settings.update { $0.customTheme = recipe.id }
+        let themed = dock.restingCenter(of: DockIdentity.finder)?.y ?? first.y
+        await glide(to: NSPoint(x: middle - 140, y: themed), over: 0.9)
+        await glide(to: NSPoint(x: middle + 140, y: themed), over: 0.9)
+
         // A spacer and the Share tile from the dock's own menu, and a named divider.
         if let after = dock.restingCenter(of: notes) {
             let gap = NSPoint(x: after.x + CGFloat(dock.engine.metrics.slot) / 2, y: after.y)
@@ -610,7 +753,7 @@ final class DemoTour {
             showDockMenu(at: gap, choosing: "Add Spacer", after: 1.2)
             await pause(0.5)
             if let index = coordinator.pins.items.firstIndex(where: { $0.id == DockIdentity.app("com.apple.photos") }) {
-                coordinator.pins.insert(.divider(id: DockIdentity.newTile(.divider), title: "Work"), at: index)
+                coordinator.pins.insert(.divider(id: DockIdentity.newTile(.divider), title: "Create"), at: index)
             }
             await pause(0.8)
         }
@@ -632,6 +775,46 @@ final class DemoTour {
         showMenu(of: notes, choosing: "(just look)", after: 1.0)
         try? coordinator.customIcons.setIcon(IconProvider.symbolTile("star.fill", top: NSColor(hex: 0xFFD86F), bottom: NSColor(hex: 0xFF6FD8)), for: notes)
         await pause(1.2)
+
+        // A folder in the dock: a click fans its newest files out above it,
+        // and another click puts them away.
+        if let stack = downloads {
+            coordinator.pins.insert(.folder(stack))
+            await pause(0.6)
+            await glide(toTile: stack.id, over: 0.9)
+            dock.demoClick(stack.id)
+            await pause(0.5)
+            if let tile = dock.restingCenter(of: stack.id) {
+                await glide(to: NSPoint(x: tile.x + 12, y: tile.y + 300), over: 1.4)
+                await pause(0.6)
+                await glide(to: tile, over: 0.7)
+            } else {
+                await pause(2.1)
+            }
+            dock.demoClick(stack.id)
+            await pause(0.6)
+        }
+
+        // Profiles: the dock's menu, then Personal's apps, then back to Work.
+        let work = coordinator.profiles.activeID
+        if let personal = coordinator.profiles.profiles.first(where: { $0.name == "Personal" }),
+           let left = dock.restingCenter(of: DockIdentity.finder) {
+            let spot = NSPoint(x: left.x + CGFloat(dock.engine.metrics.slot) * 2.5, y: left.y)
+            await glide(to: spot, over: 0.8)
+            showDockMenu(at: spot, choosing: "(just look)", after: 1.2)
+            showProfileMenu(at: spot, choosing: personal.name, after: 1.1)
+            if coordinator.profiles.activeID != personal.id {
+                coordinator.profiles.activate(personal.id)
+            }
+            await pause(0.4)
+            let row = dock.restingCenter(of: DockIdentity.finder)?.y ?? first.y
+            await glide(to: NSPoint(x: middle + 160, y: row), over: 1.4)
+            showProfileMenu(at: NSPoint(x: middle + 160, y: row), choosing: "Work", after: 1.0)
+            if coordinator.profiles.activeID != work {
+                coordinator.profiles.activate(work)
+            }
+            await pause(0.6)
+        }
 
         // Auto-hide: it slides away when the pointer leaves, and comes back at the edge.
         coordinator.settings.update { $0.autoHide = .always }
@@ -708,6 +891,13 @@ final class DemoTour {
     private func showDockMenu(at screenPoint: NSPoint, choosing title: String, after seconds: Double) {
         due += seconds
         dock.demoDockMenu(at: screenPoint, choosing: title, after: seconds)
+    }
+
+    /// Opens the profile list (the dock menu's Profile submenu) at
+    /// `screenPoint` for `seconds`, then picks the profile named `title`.
+    private func showProfileMenu(at screenPoint: NSPoint, choosing title: String, after seconds: Double) {
+        due += seconds
+        dock.demoProfileMenu(at: screenPoint, choosing: title, after: seconds)
     }
 
     /// Waits until the end of a pause of `seconds`.

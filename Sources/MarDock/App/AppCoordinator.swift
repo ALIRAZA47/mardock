@@ -8,6 +8,7 @@ import SwiftUI
 final class AppCoordinator: NSObject, ObservableObject {
     let settings = SettingsStore()
     let pins = PinStore()
+    let profiles: ProfileStore
     let recents = RecentAppsStore()
     let customIcons = CustomIconStore()
     let themes = ThemeStore()
@@ -30,6 +31,7 @@ final class AppCoordinator: NSObject, ObservableObject {
     private var powerObserver: NSObjectProtocol?
 
     override init() {
+        profiles = ProfileStore(pins: pins)
         systemDock = SystemDockManager(agent: agent)
         actions = AppActions(agent: agent, pins: pins)
         dock = DockController(
@@ -185,7 +187,7 @@ final class AppCoordinator: NSObject, ObservableObject {
         for id in customIcons.iconIDs {
             icons[id] = customIcons.pngData(for: id)
         }
-        return MarDockBackup(settings: settings.settings, items: pins.items, themes: themes.custom, profiles: nil, icons: icons)
+        return MarDockBackup(settings: settings.settings, items: pins.items, themes: themes.custom, profiles: profiles.snapshot(), icons: icons)
     }
 
     /// Replaces the dock, settings, themes and icons with a backup's. Choices
@@ -200,7 +202,11 @@ final class AppCoordinator: NSObject, ObservableObject {
         incoming.restoreSystemDockOnQuit = local.restoreSystemDockOnQuit
         incoming.display = local.display
         settings.settings = incoming.sanitized()
-        pins.setItems(backup.items)
+        if let saved = backup.profiles {
+            profiles.replace(with: saved)
+        } else {
+            pins.setItems(backup.items)
+        }
         for (id, png) in backup.icons {
             if let image = NSImage(data: png) {
                 try? customIcons.setIcon(image, for: id)
@@ -216,6 +222,7 @@ final class AppCoordinator: NSObject, ObservableObject {
                 .environmentObject(self)
                 .environmentObject(settings)
                 .environmentObject(pins)
+                .environmentObject(profiles)
                 .environmentObject(customIcons)
                 .environmentObject(themes)
                 .environmentObject(systemDock)
@@ -242,8 +249,13 @@ final class AppCoordinator: NSObject, ObservableObject {
     }
 
     func showAbout() {
+        showSettings(pane: .about)
+    }
+
+    /// Opens Settings on one of its panes.
+    func showSettings(pane: SettingsView.Pane) {
         showSettings()
-        NotificationCenter.default.post(name: .showAboutPane, object: nil)
+        NotificationCenter.default.post(name: .showSettingsPane, object: pane.rawValue)
     }
 
     private func makeWindow<Content: View>(title: String, size: NSSize, content: Content) -> NSWindow {
@@ -284,7 +296,8 @@ final class OneShot {
 }
 
 extension Notification.Name {
-    static let showAboutPane = Notification.Name("MarDock.showAboutPane")
+    /// Settings switches to the pane whose raw value is the notification's object.
+    static let showSettingsPane = Notification.Name("MarDock.showSettingsPane")
 }
 
 /// What the Privacy & Security pane shows, gathered from the system itself

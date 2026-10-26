@@ -69,8 +69,10 @@ struct SettingsView: View {
             }
             .navigationTitle((selection ?? .appearance).title)
         }
-        .onReceive(NotificationCenter.default.publisher(for: .showAboutPane)) { _ in
-            selection = .about
+        .onReceive(NotificationCenter.default.publisher(for: .showSettingsPane)) { note in
+            if let raw = note.object as? String, let pane = Pane(rawValue: raw) {
+                selection = pane
+            }
         }
     }
 }
@@ -410,10 +412,40 @@ struct BehaviorPane: View {
 struct AppsPane: View {
     @EnvironmentObject private var coordinator: AppCoordinator
     @EnvironmentObject private var pins: PinStore
+    @EnvironmentObject private var profiles: ProfileStore
     @State private var importMessage: String?
 
     var body: some View {
         Form {
+            Section {
+                HStack(spacing: 10) {
+                    Picker("Profile", selection: Binding(get: { profiles.activeID }, set: { profiles.activate($0) })) {
+                        ForEach(profiles.profiles) { profile in
+                            Text(profile.name).tag(profile.id)
+                        }
+                    }
+                    .frame(maxWidth: 280)
+                    Spacer()
+                    Button("New…") {
+                        if let name = askForProfileName(title: "New profile", button: "Create", initial: "") {
+                            profiles.create(named: name.isEmpty ? "Profile \(profiles.profiles.count + 1)" : name)
+                        }
+                    }
+                    Button("Rename…") {
+                        let current = profiles.profiles.first { $0.id == profiles.activeID }?.name ?? ""
+                        if let name = askForProfileName(title: "Rename profile", button: "Rename", initial: current) {
+                            profiles.rename(profiles.activeID, to: name)
+                        }
+                    }
+                    Button("Delete…") {
+                        confirmDeleteProfile()
+                    }
+                    .disabled(profiles.profiles.count < 2)
+                }
+            } footer: {
+                FooterText("Profiles are sets of apps and items you switch between, such as Work and Personal: from the dock's menu, or here. A new profile starts as a copy of the current dock.")
+            }
+
             Section {
                 AppRow(name: "Finder", detail: "Always first", id: DockIdentity.finder, original: icon(forBundle: DockIdentity.finderBundleIdentifier), remove: nil)
                 ForEach(pins.items) { item in
@@ -503,6 +535,18 @@ struct AppsPane: View {
         panel.message = "Choose a folder to keep in MarDock. Its newest files will fan out when you click it."
         guard panel.runModal() == .OK, let url = panel.url, let stack = FolderStacks.makeStack(for: url) else { return }
         withAnimation { pins.insert(.folder(stack)) }
+    }
+
+    private func confirmDeleteProfile() {
+        guard let current = profiles.profiles.first(where: { $0.id == profiles.activeID }) else { return }
+        let alert = NSAlert()
+        alert.messageText = "Delete the profile “\(current.name)”?"
+        alert.informativeText = "Its apps and items go with it, and the dock switches to another profile."
+        alert.addButton(withTitle: "Delete")
+        alert.addButton(withTitle: "Cancel")
+        alert.buttons.first?.hasDestructiveAction = true
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        profiles.delete(current.id)
     }
 
     private func icon(forBundle identifier: String) -> NSImage {

@@ -149,6 +149,106 @@ final class PinStore: ObservableObject {
     }
 }
 
+/// Named sets of dock items, such as Work and Personal. The items of the
+/// profile in use live in the PinStore; switching puts them back here and
+/// loads the other profile's.
+@MainActor
+final class ProfileStore: ObservableObject {
+    @Published private(set) var state: DockProfiles
+
+    private let pins: PinStore
+    private let defaults: UserDefaults
+    private let key = "profiles.v1"
+
+    init(pins: PinStore, defaults: UserDefaults = .standard) {
+        self.pins = pins
+        self.defaults = defaults
+        state = DockProfiles.decode(defaults.data(forKey: key))
+            ?? DockProfiles(profiles: [DockProfile(name: "Default", items: pins.items)], activeID: nil)
+    }
+
+    var profiles: [DockProfile] { state.profiles }
+    var activeID: String { state.activeID }
+
+    /// Switches the dock to another profile.
+    func activate(_ id: String) {
+        guard id != state.activeID, state.profiles.contains(where: { $0.id == id }) else { return }
+        var updated = snapshot()
+        updated.setActive(id)
+        state = updated
+        pins.setItems(updated.active.items)
+        save()
+    }
+
+    /// Adds a profile that starts as a copy of the current dock, and uses it.
+    @discardableResult
+    func create(named name: String) -> String? {
+        var updated = snapshot()
+        let profile = DockProfile(name: name, items: pins.items)
+        guard updated.add(profile) else { return nil }
+        state = updated
+        save()
+        activate(profile.id)
+        return profile.id
+    }
+
+    func rename(_ id: String, to name: String) {
+        var updated = state
+        updated.rename(id, to: name)
+        state = updated
+        save()
+    }
+
+    /// Removes a profile (never the last). If it was in use, the dock
+    /// switches to the first remaining one.
+    func delete(_ id: String) {
+        guard state.profiles.count > 1 else { return }
+        let wasActive = id == state.activeID
+        var updated = snapshot()
+        updated.remove(id)
+        state = updated
+        if wasActive {
+            pins.setItems(updated.active.items)
+        }
+        save()
+    }
+
+    /// All profiles, with the one in use as the dock shows it now.
+    func snapshot() -> DockProfiles {
+        var current = state
+        current.setItems(pins.items, of: current.activeID)
+        return current
+    }
+
+    /// Replaces every profile (importing a backup).
+    func replace(with profiles: DockProfiles) {
+        state = profiles
+        pins.setItems(profiles.active.items)
+        save()
+    }
+
+    private func save() {
+        defaults.set(state.encoded(), forKey: key)
+    }
+}
+
+/// Asks for a profile's name; nil if the user cancels. The name may be empty.
+@MainActor
+func askForProfileName(title: String, button: String, initial: String, detail: String? = nil) -> String? {
+    let alert = NSAlert()
+    alert.messageText = title
+    if let detail { alert.informativeText = detail }
+    let field = NSTextField(string: initial)
+    field.placeholderString = "Work, Personal, Games…"
+    field.frame = NSRect(x: 0, y: 0, width: 260, height: 24)
+    alert.accessoryView = field
+    alert.addButton(withTitle: button)
+    alert.addButton(withTitle: "Cancel")
+    alert.window.initialFirstResponder = field
+    guard alert.runModal() == .alertFirstButtonReturn else { return nil }
+    return field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
 /// Apps used recently, for the dock's recent section. Only apps the user
 /// brings to the front count, and only their name and location are kept.
 @MainActor

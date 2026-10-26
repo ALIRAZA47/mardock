@@ -41,6 +41,20 @@ access and asks for no special permissions.
 - Accent colours, running-indicator styles (glow, dots, lines), optional
   reflections, adjustable icon size, magnification and reach.
 
+**Your dock, your way**
+- **Theme editor**: start from any theme and change the glass, tint, drifting
+  colours, edge, neon glow, shadows and accent with a live preview. Themes are
+  small files you can share.
+- **Folder stacks**: keep a folder in the dock; its tile shows the newest
+  files and a click fans them out (or shows a grid).
+- **Profiles** such as Work and Personal, each with its own apps and items,
+  switched from the dock's menu or Settings.
+- **Spacers and named dividers** to group apps, a **Share tile** to drop files
+  on, a **recent apps** section and **custom icons** for any app.
+- **Keyboard launching**: ⌃⌥1–9 opens the first nine apps (or ⌥ / ⌥⌘).
+- **Move to another Mac**: export the dock, settings, themes, profiles and
+  icons to one file and import it there.
+
 **Behaviour**
 - Bottom, left or right; main display or follow the pointer between displays.
 - Auto-hide: never, always, or **only when a window overlaps the dock**.

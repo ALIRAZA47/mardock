@@ -92,7 +92,7 @@ struct ThemeEditor: View {
             }
             .padding(16)
         }
-        .frame(width: 600, height: 760)
+        .frame(width: 600, height: 660)
     }
 
     private func swatch(_ index: Int) -> Binding<Color> {

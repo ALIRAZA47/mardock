@@ -1,7 +1,7 @@
 #!/bin/bash
 # CI only: photographs every theme using the self-test build's --demo mode,
-# plus a side dock and the Settings and Welcome windows. The images are
-# uploaded as a build artifact.
+# plus a side dock, three Settings panes, the theme editor and the Welcome
+# window. The images are uploaded as a build artifact.
 set -uo pipefail
 
 APP="${1:-build/selftest/MarDock.app}"
@@ -54,16 +54,21 @@ else
 fi
 kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
 
-for window in settings welcome; do
-  log="$OUT/$window.log"
-  "$APP/Contents/MacOS/MarDock" --demo --theme aurora --window "$window" >"$log" 2>&1 &
+# Windows: name[:settings pane].
+for shot in settings settings:apps settings:behavior theme-editor welcome; do
+  window="${shot%%:*}"
+  name="${shot/:/-}"
+  args=(--demo --theme aurora --window "$window")
+  [[ "$shot" == *:* ]] && args+=(--pane "${shot#*:}")
+  log="$OUT/$name.log"
+  "$APP/Contents/MacOS/MarDock" "${args[@]}" >"$log" 2>&1 &
   pid=$!
   if wait_for "$log" "DEMO WINDOW"; then
     sleep 1.5
     rect="$(rect_from "$log" "DEMO WINDOW")"
-    screencapture -x -t png -R"$rect" "$OUT/window-$window.png" || echo "screencapture failed for $window"
+    screencapture -x -t png -R"$rect" "$OUT/window-$name.png" || echo "screencapture failed for $name"
   else
-    echo "window $window never appeared"; cat "$log"
+    echo "window $name never appeared"; cat "$log"
   fi
   kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
 done

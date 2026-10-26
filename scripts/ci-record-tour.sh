@@ -34,7 +34,7 @@ start_tour() { # log file
 }
 
 wait_for_tour() {
-  for _ in $(seq 1 150); do
+  for _ in $(seq 1 240); do
     kill -0 "$TOUR_PID" 2>/dev/null || break
     sleep 0.5
   done

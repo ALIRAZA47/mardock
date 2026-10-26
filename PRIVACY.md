@@ -6,9 +6,10 @@ MarDock collects nothing.
   connecting anywhere. There are no analytics, crash reporters, update checks,
   accounts or ads.
 - **What it stores.** Your settings, what you keep in your dock (apps,
-  spacers, dividers), the last few apps you brought to the front (for the
-  recent apps section: their names and locations only) and any icons you pick
-  for apps, in MarDock's own sandbox container on your Mac
+  spacers, dividers, folders) and in each profile, themes you make, the last
+  few apps you brought to the front (for the recent apps section: their names
+  and locations only) and any icons you pick for apps, in MarDock's own
+  sandbox container on your Mac
   (`~/Library/Containers/io.github.aliraza47.MarDock`). Before hiding the macOS
   Dock it also stores the two Dock settings it changes, so it can put them back.
 - **Keyboard shortcuts.** ⌃⌥1–9 are registered as system hot keys: macOS tells

@@ -586,6 +586,19 @@ final class DockController: NSObject {
         }
     }
 
+    /// Asks for a name and adds a profile that starts as a copy of this dock.
+    func newProfile() {
+        guard let profiles = coordinator?.profiles else { return }
+        NSApp.activate()
+        guard let name = askForProfileName(
+            title: "New profile",
+            button: "Create",
+            initial: "",
+            detail: "A profile is a set of apps and items you can switch to, such as Work or Personal. The new one starts as a copy of this dock."
+        ) else { return }
+        profiles.create(named: name.isEmpty ? "Profile \(profiles.profiles.count + 1)" : name)
+    }
+
     func hasCustomIcon(_ entry: DockEntry) -> Bool {
         customIcons.hasIcon(for: entry.id)
     }
@@ -1083,6 +1096,13 @@ extension DockController {
         let local = panel.convertPoint(fromScreen: screenPoint)
         let u = dockView.dockPoint(for: local).u
         demoShow(DockMenus.dockMenu(controller: self, settings: settings, coordinator: coordinator, at: u), at: local, choosing: title, after: seconds)
+    }
+
+    /// Opens the profile list (the dock menu's Profile submenu) where
+    /// `screenPoint` is, then picks the profile named `title`.
+    func demoProfileMenu(at screenPoint: NSPoint, choosing title: String, after seconds: TimeInterval) {
+        guard let profiles = coordinator?.profiles else { return }
+        demoShow(DockMenus.profileMenu(profiles: profiles, controller: self), at: panel.convertPoint(fromScreen: screenPoint), choosing: title, after: seconds)
     }
 
     private func demoShow(_ menu: NSMenu, at point: NSPoint, choosing title: String, after seconds: TimeInterval) {
