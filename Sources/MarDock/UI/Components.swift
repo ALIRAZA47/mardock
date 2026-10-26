@@ -16,6 +16,24 @@ struct PaneIcon: View {
     }
 }
 
+/// Explanatory text under a settings section, aligned with the rows above.
+struct FooterText: View {
+    let text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    var body: some View {
+        Text(text)
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
 /// A labelled slider with a live value read-out.
 struct SettingSlider: View {
     let title: String

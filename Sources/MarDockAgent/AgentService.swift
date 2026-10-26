@@ -141,6 +141,16 @@ final class AgentService: NSObject, MarDockAgentXPC, @unchecked Sendable {
                 ownBundleIdentifiers: [gate.appBundleIdentifier, Bundle.main.bundleIdentifier].compactMap { $0?.lowercased() }
             )
 
+        case let .setHidden(pid, bundleIdentifier, hidden):
+            guard limiter.allow("hide:\(pid)", every: 0.15) else { return .failure(.rateLimited) }
+            return AppTerminator.setHidden(
+                pid: pid,
+                bundleIdentifier: bundleIdentifier,
+                hidden: hidden,
+                clientPID: clientPID,
+                ownBundleIdentifiers: [gate.appBundleIdentifier, Bundle.main.bundleIdentifier].compactMap { $0?.lowercased() }
+            )
+
         case .openTrash:
             guard limiter.allow("trash", every: 0.8) else { return .failure(.rateLimited) }
             let trash = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".Trash", isDirectory: true)

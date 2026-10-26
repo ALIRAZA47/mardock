@@ -272,14 +272,19 @@ final class DockController: NSObject {
         pointerInDock = inside
         pointerAtEdge = onScreen && isAtEdge(point, of: screen) && p.u >= frame.shelfStart - reach && p.u <= frame.shelfEnd + reach
 
+        // Only wake the renderer when the dock is actually affected, so moving
+        // the mouse around the rest of the screen costs (almost) nothing.
+        let wasTracking = engine.isPointerInside
         if inside || pressed != nil {
             engine.setPointer(p)
-        } else {
+        } else if wasTracking {
             engine.setPointer(nil)
         }
         updateMouseIgnoring()
         reevaluateAutoHide()
-        kick()
+        if inside || wasTracking || pressed != nil {
+            kick()
+        }
     }
 
     private func isAtEdge(_ point: NSPoint, of screen: NSScreen?) -> Bool {
@@ -451,6 +456,10 @@ final class DockController: NSObject {
                 NSSound.beep()
             }
         }
+    }
+
+    func setHidden(_ app: NSRunningApplication, _ hidden: Bool) {
+        actions.setHidden(app, hidden)
     }
 
     func unpin(_ entry: DockEntry) {

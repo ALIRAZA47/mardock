@@ -213,6 +213,12 @@ final class DockView: NSView {
         return nil
     }
 
+    /// True when the backdrop is the system's Liquid Glass (macOS 26+).
+    private var usesSystemGlass: Bool {
+        guard let backdrop else { return false }
+        return !(backdrop is NSVisualEffectView)
+    }
+
     private var resolvedAppearance: NSAppearance {
         configuration.style.appearance.flatMap(NSAppearance.init(named:)) ?? effectiveAppearance
     }
@@ -231,7 +237,8 @@ final class DockView: NSView {
             tintLayer.colors = style.tintColors.map(\.cgColor)
             tintLayer.opacity = style.tintColors.isEmpty ? 0 : style.tintOpacity
 
-            let highlightStrength = CGFloat(style.innerHighlight) * (dark ? 0.7 : 1)
+            // System Liquid Glass draws its own edge light; don't double it.
+            let highlightStrength = usesSystemGlass ? 0 : CGFloat(style.innerHighlight) * (dark ? 0.7 : 1)
             highlightLayer.colors = [NSColor(white: 1, alpha: highlightStrength).cgColor, NSColor(white: 1, alpha: 0).cgColor]
 
             let contrast: CGFloat = configuration.increaseContrast ? 1.6 : 1
@@ -431,7 +438,7 @@ final class DockView: NSView {
             specularLayer.opacity = 0
         }
 
-        let lineWidth = style.borderWidth * (configuration.increaseContrast ? 1.5 : 1)
+        let lineWidth = usesSystemGlass ? 0 : style.borderWidth * (configuration.increaseContrast ? 1.5 : 1)
         if lineWidth > 0, rect.width > lineWidth * 2 {
             borderLayer.isHidden = false
             borderLayer.frame = rect

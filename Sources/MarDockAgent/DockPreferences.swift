@@ -78,7 +78,8 @@ enum DockPreferences {
     }
 }
 
-/// Quits apps on the dock's behalf — only ordinary, user-facing apps.
+/// Quits, hides and shows apps on the dock's behalf — only ordinary,
+/// user-facing apps.
 enum AppTerminator {
     /// Parts of macOS that must never be quit from a dock menu.
     static let protectedBundleIdentifiers: Set<String> = [
@@ -115,6 +116,28 @@ enum AppTerminator {
             return .failure(.notAllowed)
         }
         let sent = force ? app.forceTerminate() : app.terminate()
+        return sent ? .done : .failure(.failed)
+    }
+
+    /// Hiding is harmless, so unlike quitting it is allowed for Finder too.
+    static func setHidden(
+        pid: pid_t,
+        bundleIdentifier: String,
+        hidden: Bool,
+        clientPID: pid_t,
+        ownBundleIdentifiers: [String]
+    ) -> AgentReply {
+        guard let app = NSRunningApplication(processIdentifier: pid), !app.isTerminated else {
+            return .failure(.notFound)
+        }
+        guard let actual = app.bundleIdentifier,
+              actual.caseInsensitiveCompare(bundleIdentifier) == .orderedSame,
+              app.activationPolicy == .regular,
+              pid != clientPID, pid != getpid(),
+              !ownBundleIdentifiers.contains(actual.lowercased())
+        else { return .failure(.notAllowed) }
+        if app.isHidden == hidden { return .done }
+        let sent = hidden ? app.hide() : app.unhide()
         return sent ? .done : .failure(.failed)
     }
 }

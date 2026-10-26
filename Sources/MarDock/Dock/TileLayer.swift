@@ -123,7 +123,7 @@ final class DockLabelView: NSView {
         text.stringValue = value
         layoutContent()
         let size = text.intrinsicContentSize
-        return NSSize(width: min(ceil(size.width) + 24, 360), height: ceil(size.height) + 10)
+        return NSSize(width: min(ceil(size.width) + 30, 360), height: ceil(size.height) + 10)
     }
 
     override func setFrameSize(_ newSize: NSSize) {
@@ -134,7 +134,7 @@ final class DockLabelView: NSView {
     private func layoutContent() {
         background.frame = bounds
         let height = text.intrinsicContentSize.height
-        text.frame = NSRect(x: 12, y: (bounds.height - height) / 2, width: max(bounds.width - 24, 0), height: height)
+        text.frame = NSRect(x: 11, y: (bounds.height - height) / 2, width: max(bounds.width - 22, 0), height: height)
     }
 }
 

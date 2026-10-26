@@ -61,7 +61,7 @@ access and asks for no special permissions.
 | 🔒 **App Sandbox** | The dock runs sandboxed: it can't read your files or other apps' data. |
 | 🌐 **No network** | No network entitlement, so macOS blocks every connection. No analytics, ever. |
 | 🛡 **Hardened Runtime** | On every executable, with no exceptions: no code injection, no unsigned libraries. |
-| 🧩 **Tiny, locked-down helper** | Quitting apps and changing the macOS Dock need more than the sandbox allows, so a small XPC helper does exactly that — five allowlisted operations, strictly validated, and it only accepts connections from the exact app it ships in. |
+| 🧩 **Tiny, locked-down helper** | Quitting or hiding apps and changing the macOS Dock need more than the sandbox allows, so a small XPC helper does exactly that — a handful of allowlisted operations, strictly validated, and it only accepts connections from the exact app it ships in. |
 | 🙅 **No special permissions** | No Accessibility, Screen Recording, Input Monitoring, Automation or Full Disk Access. |
 | 📦 **No dependencies** | Pure Swift, AppKit and Core Animation. No third-party code. |
 | ✅ **Verified, not just claimed** | `make audit` checks entitlements, signatures and imported APIs; `make selftest` proves the sandbox blocks the network and the helper refuses what it should. Both run in CI. |

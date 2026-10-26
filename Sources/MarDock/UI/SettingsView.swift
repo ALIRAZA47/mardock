@@ -89,7 +89,7 @@ struct AppearancePane: View {
                     .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.primary.opacity(0.08)))
                     .listRowInsets(EdgeInsets(top: 10, leading: 10, bottom: 10, trailing: 10))
             } footer: {
-                Text("This preview is live — hover over it and click the icons.")
+                FooterText("This preview is live — hover over it and click the icons.")
             }
 
             Section("Theme") {
@@ -135,7 +135,7 @@ struct AppearancePane: View {
             } header: {
                 Text("Motion")
             } footer: {
-                Text("With “Reduce motion” turned on in Accessibility settings, MarDock skips bounces and particle effects automatically.")
+                FooterText("With “Reduce motion” turned on in Accessibility settings, MarDock skips bounces and particle effects automatically.")
             }
         }
         .formStyle(.grouped)
@@ -177,7 +177,7 @@ struct BehaviorPane: View {
             } header: {
                 Text("Hiding")
             } footer: {
-                Text("“When a window overlaps” keeps the dock visible until the app you're using puts a window over it. Push the pointer against the screen edge to bring a hidden dock back.")
+                FooterText("“When a window overlaps” keeps the dock visible until the app you're using puts a window over it. Push the pointer against the screen edge to bring a hidden dock back.")
             }
 
             Section("Contents") {
@@ -235,7 +235,7 @@ struct AppsPane: View {
             } header: {
                 Text("Kept in the dock")
             } footer: {
-                Text("Drag rows to reorder. You can also drag apps from Finder onto the dock, drag icons along the dock, or drag one off to remove it.")
+                FooterText("Drag rows to reorder. You can also drag apps from Finder onto the dock, drag icons along the dock, or drag one off to remove it.")
             }
 
             Section {
@@ -394,7 +394,7 @@ struct SystemDockPane: View {
             } header: {
                 Text("Tune the macOS Dock")
             } footer: {
-                Text("Applying restarts the macOS Dock, which takes a moment. MarDock's helper can only change the settings shown here — it refuses anything else.")
+                FooterText("Applying restarts the macOS Dock, which takes a moment. MarDock's helper can only change the settings shown here — it refuses anything else.")
             }
 
             if let error = systemDock.lastError, !systemDock.isAvailable {
@@ -530,7 +530,7 @@ struct PrivacyPane: View {
                 StatusRow(
                     title: "What the helper may do",
                     ok: true,
-                    detail: "Quit an app you choose, change the 15 macOS Dock settings listed in this window, read which apps are in your macOS Dock, and open the Trash. Every request is validated; anything else is refused."
+                    detail: "Quit, hide or show an app you choose, change the 15 macOS Dock settings listed in this window, read which apps are in your macOS Dock, and open the Trash. Every request is validated; anything else is refused."
                 )
                 HStack {
                     Button {
@@ -552,7 +552,7 @@ struct PrivacyPane: View {
             } header: {
                 Text("Helper")
             } footer: {
-                Text("The sandbox stops MarDock from quitting other apps or changing the macOS Dock, so a tiny helper does exactly those things and nothing more.")
+                FooterText("The sandbox stops MarDock from quitting or hiding other apps and from changing the macOS Dock, so a tiny helper does exactly those things and nothing more.")
             }
 
             Section("Permissions MarDock never asks for") {

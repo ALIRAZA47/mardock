@@ -226,6 +226,7 @@ final class AgentWireTests: XCTestCase {
             .applySystemDock(changes: SystemDockSchema.hideChanges, restartDock: true),
             .importSystemDockApps,
             .quitApp(pid: 501, bundleIdentifier: "com.apple.Notes", force: false),
+            .setHidden(pid: 502, bundleIdentifier: "com.apple.Notes", hidden: true),
             .openTrash,
             .verifyIntegrity,
         ]
@@ -254,6 +255,7 @@ final class AgentWireTests: XCTestCase {
         XCTAssertThrowsError(try AgentWire.decode(AgentRequest.self, from: Data(repeating: 0x41, count: AgentWire.maxMessageSize + 1)))
         XCTAssertFalse(AgentWire.isWellFormed(.quitApp(pid: 1, bundleIdentifier: "com.apple.launchd", force: true)))
         XCTAssertFalse(AgentWire.isWellFormed(.quitApp(pid: 400, bundleIdentifier: "../../x", force: false)))
+        XCTAssertFalse(AgentWire.isWellFormed(.setHidden(pid: 0, bundleIdentifier: "com.apple.Notes", hidden: true)))
         XCTAssertFalse(AgentWire.isWellFormed(.applySystemDock(changes: [SystemDockChange(key: "persistent-apps", value: .string(""))], restartDock: true)))
         XCTAssertFalse(AgentWire.isWellFormed(.hello(clientVersion: -1)))
     }

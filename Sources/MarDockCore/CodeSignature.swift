@@ -78,7 +78,9 @@ public enum CodeSignature {
 public enum ProcessSecurity {
     /// True when the current process runs inside the App Sandbox.
     public static var isSandboxed: Bool {
-        ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] != nil
+        if ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] != nil { return true }
+        // Inside the sandbox the home directory is the app's container.
+        return NSHomeDirectory().contains("/Library/Containers/")
     }
 
     /// Reads one of the current process's entitlements.

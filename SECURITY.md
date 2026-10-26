@@ -3,7 +3,8 @@
 MarDock replaces one of the most-used parts of macOS, so it is built to be
 boring from a security point of view: it can't reach the network, it can't read
 your files, it never runs scripts or other programs, and the one component with
-more power than the sandbox allows can only do five narrowly defined things.
+more power than the sandbox allows can only do a handful of narrowly defined
+things.
 
 This document describes the design, what each guarantee rests on, and how to
 check it yourself.
@@ -16,7 +17,7 @@ check it yourself.
 │ • the dock, settings, menus  │                                   │ • embedded in MarDock.app      │
 │ • App Sandbox                │ ◀──────────────────────────────── │ • Hardened Runtime, no         │
 │ • no network entitlement     │        typed replies              │   entitlements                 │
-│ • Hardened Runtime           │                                   │ • 5 allowlisted operations     │
+│ • Hardened Runtime           │                                   │ • 7 allowlisted operations     │
 └──────────────────────────────┘                                   └───────────────────────────────┘
 ```
 
@@ -34,7 +35,8 @@ Automation or Full Disk Access permission, and none is ever requested.
 
 The sandbox correctly forbids two things a dock needs: quitting other apps and
 changing the macOS Dock's preferences (to hide or tune it). Those are done by a
-small **XPC helper** embedded in the app bundle. It is not sandboxed, so it is
+small **XPC helper** embedded in the app bundle. (Hiding other apps turned out
+to be blocked as well, so the helper does that too.) It is not sandboxed, so it is
 designed to be as small and strict as possible.
 
 ## The helper
@@ -67,6 +69,7 @@ anything happens:
 | Change macOS Dock settings | Each key must be in `SystemDockSchema`, with the right type and within range (e.g. `tilesize` 16–128, `mineffect` ∈ genie/scale/suck). No duplicates. Rate limited. The Dock is restarted with `SIGTERM`, at most every 1.5 s. |
 | List apps in the macOS Dock | Parsed defensively from `persistent-apps`: bundle IDs and paths validated, list capped, nonexistent apps dropped. |
 | Quit an app | The pid must still belong to the claimed bundle ID (pids get reused), it must be a regular foreground app, and never Finder, the Dock, login window, other system UI, MarDock itself or the requesting process. Rate limited. |
+| Hide or show an app | Same pid/bundle-ID/regular-app checks (hiding Finder is allowed, as in the macOS Dock). Rate limited. |
 | Open the Trash | No parameters. |
 | Verify integrity | Re-validates both signatures and reports the result. |
 

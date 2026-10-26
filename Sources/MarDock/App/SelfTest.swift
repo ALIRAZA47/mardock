@@ -175,6 +175,19 @@ enum SelfTest {
         return data as Data
     }
 
+    private static func info(_ name: String, _ detail: String) {
+        print("SELFTEST INFO \(name) \(detail)")
+        fflush(stdout)
+    }
+
+    private static func waitUntil(_ seconds: Double, _ condition: () -> Bool) async -> Bool {
+        let deadline = Date().addingTimeInterval(seconds)
+        while !condition() && Date() < deadline {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+        return condition()
+    }
+
     private static func launchHideQuit(agent: AgentClient) async {
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.calculator") else {
             check("launch", false, "Calculator not found")
@@ -187,26 +200,48 @@ enum SelfTest {
                 continuation.resume(returning: app)
             }
         }
-        guard let app else {
+        guard let app, let identifier = app.bundleIdentifier else {
             check("launch", false, "openApplication failed")
             return
         }
         check("launch", true, "pid \(app.processIdentifier)")
-        for _ in 0..<50 where !app.isFinishedLaunching {
-            try? await Task.sleep(nanoseconds: 100_000_000)
-        }
-        app.hide()
-        try? await Task.sleep(nanoseconds: 800_000_000)
-        check("hide", app.isHidden)
-        do {
-            try await agent.quit(pid: app.processIdentifier, bundleIdentifier: app.bundleIdentifier ?? "", force: false)
-            for _ in 0..<80 where !app.isTerminated {
-                try? await Task.sleep(nanoseconds: 100_000_000)
+        _ = await waitUntil(5) { app.isFinishedLaunching }
+
+        // Bringing a running app forward the way the dock does it.
+        let activate = NSWorkspace.OpenConfiguration()
+        activate.activates = true
+        _ = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+            NSWorkspace.shared.openApplication(at: url, configuration: activate) { _, error in
+                continuation.resume(returning: error == nil)
             }
-            check("quit-via-helper", app.isTerminated)
+        }
+        let activated = await waitUntil(3) { app.isActive || NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier }
+        check("activate", activated)
+
+        // What the sandbox allows directly (informational).
+        let directHide = app.hide()
+        let hiddenDirectly = await waitUntil(1) { app.isHidden }
+        info("hide-direct", "returned \(directHide), hidden \(hiddenDirectly)")
+        if hiddenDirectly {
+            _ = app.unhide()
+            _ = await waitUntil(1) { !app.isHidden }
+        }
+
+        do {
+            try await agent.setHidden(pid: app.processIdentifier, bundleIdentifier: identifier, hidden: true)
+            check("hide-via-helper", await waitUntil(2) { app.isHidden })
+            try await agent.setHidden(pid: app.processIdentifier, bundleIdentifier: identifier, hidden: false)
+            check("unhide-via-helper", await waitUntil(2) { !app.isHidden })
+        } catch {
+            check("hide-via-helper", false, error.localizedDescription)
+        }
+
+        do {
+            try await agent.quit(pid: app.processIdentifier, bundleIdentifier: identifier, force: false)
+            check("quit-via-helper", await waitUntil(8) { app.isTerminated })
         } catch {
             check("quit-via-helper", false, error.localizedDescription)
-            app.forceTerminate()
+            _ = app.forceTerminate()
         }
     }
 
@@ -259,6 +294,9 @@ enum DemoMode {
             s.hideSystemDock = false
         }
         coordinator.pins.setPins(PinStore.defaultPins())
+        if arguments.contains("--backdrop") {
+            showBackdrop()
+        }
         coordinator.running.start()
         coordinator.dock.start()
         coordinator.dock.stopPointerTracking()
@@ -280,6 +318,42 @@ enum DemoMode {
                 }
             }
         }
+    }
+
+    private static var backdrop: NSWindow?
+
+    /// A colourful "wallpaper" window behind the dock, so screenshots show
+    /// what the glass does (CI desktops are plain black).
+    private static func showBackdrop() {
+        guard let screen = NSScreen.screens.first else { return }
+        let window = NSWindow(contentRect: screen.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.level = .normal
+        window.backgroundColor = .black
+        window.ignoresMouseEvents = true
+        window.isReleasedWhenClosed = false
+        let host = LayerHostView(frame: NSRect(origin: .zero, size: screen.frame.size))
+        window.contentView = host
+        guard let root = host.layer else { return }
+        let base = CAGradientLayer()
+        base.frame = root.bounds
+        let colors: [UInt32] = [0x1D2671, 0x5B2A86, 0xC33764, 0xF7971E]
+        base.colors = colors.map { NSColor(hex: $0).cgColor }
+        base.startPoint = CGPoint(x: 0, y: 1)
+        base.endPoint = CGPoint(x: 1, y: 0)
+        root.addSublayer(base)
+        let blobs: [(CGFloat, CGFloat, CGFloat, UInt32)] = [(0.16, 0.1, 0.45, 0x30CFD0), (0.5, 0.05, 0.4, 0xFFD86F), (0.84, 0.16, 0.45, 0xFF6FD8)]
+        for (x, y, scale, hex) in blobs {
+            let blob = CAGradientLayer()
+            blob.type = .radial
+            blob.startPoint = CGPoint(x: 0.5, y: 0.5)
+            blob.endPoint = CGPoint(x: 1, y: 1)
+            blob.colors = [NSColor(hex: hex, alpha: 0.9).cgColor, NSColor(hex: hex, alpha: 0).cgColor]
+            let size = root.bounds.width * scale
+            blob.frame = CGRect(x: root.bounds.width * x - size / 2, y: root.bounds.height * y - size / 2, width: size, height: size)
+            root.addSublayer(blob)
+        }
+        window.orderFrontRegardless()
+        backdrop = window
     }
 
     private static func reportWindow(titled title: String) {
@@ -316,9 +390,12 @@ extension DockController {
         guard let window = dockView.window, let screen = window.screen ?? NSScreen.screens.first else { return .zero }
         let frame = engine.lastFrame
         let panel = window.frame
-        let x0 = max(panel.minX + CGFloat(frame.shelfStart) - 70, screen.frame.minX)
-        let x1 = min(panel.minX + CGFloat(frame.shelfEnd) + 70, screen.frame.maxX)
-        return CGRect(x: x0, y: screen.frame.maxY - panel.maxY, width: max(x1 - x0, 1), height: panel.height)
+        let position = dockView.configuration.position
+        let axis = DockAxis(position: position, width: Double(panel.width), height: Double(panel.height))
+        let depth = position.isVertical ? Double(panel.width) : Double(panel.height)
+        let r = axis.rect(u0: frame.shelfStart - 70, u1: frame.shelfEnd + 70, v0: 0, v1: depth)
+        let rect = CGRect(x: panel.minX + r.x, y: panel.minY + r.y, width: r.width, height: r.height).intersection(screen.frame)
+        return CGRect(x: rect.minX, y: screen.frame.maxY - rect.maxY, width: rect.width, height: rect.height)
     }
 }
 #endif

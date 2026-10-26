@@ -50,9 +50,13 @@ enum DockMenus {
                 controller?.activate(entry, modifiers: [])
             })
             if app.isHidden {
-                menu.addItem(ClosureMenuItem("Unhide", symbol: "eye") { app.unhide() })
+                menu.addItem(ClosureMenuItem("Unhide", symbol: "eye") { [weak controller] in
+                    controller?.setHidden(app, false)
+                })
             } else {
-                menu.addItem(ClosureMenuItem("Hide", symbol: "eye.slash") { app.hide() })
+                menu.addItem(ClosureMenuItem("Hide", symbol: "eye.slash") { [weak controller] in
+                    controller?.setHidden(app, true)
+                })
             }
         } else {
             menu.addItem(ClosureMenuItem("Open", symbol: "arrow.up.forward.app") { [weak controller] in

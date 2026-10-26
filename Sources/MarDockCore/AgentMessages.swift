@@ -9,6 +9,7 @@ public enum AgentRequest: Codable, Equatable, Sendable {
     case applySystemDock(changes: [SystemDockChange], restartDock: Bool)
     case importSystemDockApps
     case quitApp(pid: Int32, bundleIdentifier: String, force: Bool)
+    case setHidden(pid: Int32, bundleIdentifier: String, hidden: Bool)
     case openTrash
     case verifyIntegrity
 }
@@ -98,7 +99,7 @@ public enum AgentWire {
             return true
         case let .applySystemDock(changes, _):
             return SystemDockSchema.isValid(changes)
-        case let .quitApp(pid, bundleIdentifier, _):
+        case let .quitApp(pid, bundleIdentifier, _), let .setHidden(pid, bundleIdentifier, _):
             return pid > 1 && InputValidation.isValidBundleIdentifier(bundleIdentifier)
         }
     }

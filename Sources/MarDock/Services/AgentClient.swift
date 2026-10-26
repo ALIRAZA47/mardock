@@ -64,6 +64,10 @@ final class AgentClient {
         try await expectDone(.quitApp(pid: pid, bundleIdentifier: bundleIdentifier, force: force))
     }
 
+    func setHidden(pid: pid_t, bundleIdentifier: String, hidden: Bool) async throws {
+        try await expectDone(.setHidden(pid: pid, bundleIdentifier: bundleIdentifier, hidden: hidden))
+    }
+
     func openTrash() async throws {
         try await expectDone(.openTrash)
     }
