@@ -436,8 +436,9 @@ enum DemoMode {
 }
 
 /// `--demo --tour`: plays a scripted tour of the real dock for CI to record.
-/// A pretend pointer drives the dock through the same path as real mouse
-/// movement; the click, the menus and the settings changes are the real ones.
+/// The tour moves the real pointer and hands each position to the dock along
+/// the path real mouse movement takes (a pointer moved by software sends no
+/// events); the click, the menus and the settings changes are the real ones.
 /// Every step is due at a fixed time, so however slowly the runner draws, the
 /// tour fits the recording, which runs for a fixed time.
 @MainActor
@@ -448,7 +449,6 @@ final class DemoTour {
     private static let calculatorBundleIdentifier = "com.apple.calculator"
 
     private let coordinator: AppCoordinator
-    private let cursor = PretendCursor()
     private var point = NSPoint.zero
     /// When the tour began, and how many seconds into it the next step is due.
     private var began = 0.0
@@ -487,10 +487,11 @@ final class DemoTour {
         activity = ProcessInfo.processInfo.beginActivity(
             options: [.userInitiated, .latencyCritical], reason: "Recording a tour of the dock"
         )
-        // When Calculator hides, the system brings the previous app forward.
-        // Make that us rather than Finder, and should another app come forward
-        // anyway, keep its windows (the self-test leaves one open in Finder)
-        // behind the pretend desktop.
+        // When Calculator hides, the system brings another app forward. Hide
+        // the others (the self-test leaves a Finder window open) so that it
+        // has nothing to show, and should one come forward anyway, keep its
+        // windows behind the pretend desktop.
+        NSWorkspace.shared.hideOtherApplications()
         NSApp.activate()
         let demoed = Self.calculatorBundleIdentifier
         activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
@@ -500,9 +501,7 @@ final class DemoTour {
             guard app?.bundleIdentifier != demoed else { return }
             MainActor.assumeIsolated { DemoMode.raiseBackdrop() }
         }
-        CGDisplayHideCursor(CGMainDisplayID())
         move(to: NSPoint(x: screen.midX, y: screen.minY + screen.height * 0.55))
-        cursor.show()
     }
 
     private func run() async {
@@ -567,8 +566,6 @@ final class DemoTour {
     private func move(to p: NSPoint) {
         point = p
         dock.demoPointer(at: p)
-        cursor.move(to: p)
-        // Best effort: keep the real (hidden) pointer under the pretend one.
         CGWarpMouseCursorPosition(CGPoint(x: p.x, y: screen.maxY - p.y))
     }
 
@@ -608,42 +605,6 @@ final class DemoTour {
         due += seconds
         let wait = due - elapsed
         if wait > 0 { try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000)) }
-    }
-}
-
-/// The arrow a recording shows in place of the real pointer.
-@MainActor
-final class PretendCursor {
-    private let window: NSPanel
-    private let image = NSCursor.arrow.image
-    private let hotSpot = NSCursor.arrow.hotSpot
-
-    init() {
-        window = NSPanel(
-            contentRect: NSRect(origin: .zero, size: image.size),
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
-        )
-        window.isOpaque = false
-        window.backgroundColor = .clear
-        window.hasShadow = false
-        window.ignoresMouseEvents = true
-        window.level = .screenSaver
-        window.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
-        window.isReleasedWhenClosed = false
-        let view = NSImageView(frame: NSRect(origin: .zero, size: image.size))
-        view.image = image
-        window.contentView = view
-    }
-
-    func show() {
-        window.orderFrontRegardless()
-    }
-
-    /// Puts the arrow's tip at `point` (screen coordinates).
-    func move(to point: NSPoint) {
-        window.setFrameOrigin(NSPoint(x: point.x - hotSpot.x, y: point.y - (image.size.height - hotSpot.y)))
     }
 }
 
