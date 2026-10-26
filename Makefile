@@ -1,6 +1,6 @@
 # MarDock — common tasks. Requires Xcode 15 or later (or its command line tools).
 
-.PHONY: app run install test audit selftest icon clean
+.PHONY: app run install test audit selftest icon playground clean
 
 ## Build build/MarDock.app (universal, Hardened Runtime, ad-hoc signed).
 ## Set SIGN_IDENTITY="Developer ID Application: …" to sign for distribution.
@@ -30,6 +30,10 @@ selftest:
 	OUTPUT_DIR=build/selftest SCRATCH=.build-selftest ARCHS="$$(uname -m)" \
 	SWIFT_FLAGS="-Xswiftc -DMARDOCK_SELFTEST" scripts/build-app.sh
 	scripts/ci-selftest.sh build/selftest/MarDock.app
+
+## Try the dock in a browser: the same engine and theme numbers, with tunable settings.
+playground:
+	open playground/index.html
 
 ## Redraw the app icon (needs Python 3 with Pillow).
 icon:

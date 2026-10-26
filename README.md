@@ -117,6 +117,7 @@ bar (the dock icon) — that's where Settings and Quit are.
 Other tasks:
 
 ```sh
+make playground # try the dock in your browser before building
 make test       # unit tests (engine, validation, protocol)
 make audit      # security audit of the built app
 make selftest   # end-to-end checks against your system
@@ -168,6 +169,11 @@ Sources/
 App/              Info.plists, entitlements, icon.
 scripts/          Bundle + sign, security audit, self-test, icon generator.
 ```
+
+[`playground/index.html`](playground/index.html) is a browser version of the
+dock for trying looks and settings without building: it runs a line-for-line
+port of the engine and the themes' numbers, so keep it in step with
+`MarDockCore` and `Theme.swift`. Only the frosted glass and the app icons are stand-ins.
 
 The interesting part is [`DockEngine`](Sources/MarDockCore/DockEngine.swift): it
 owns every spring and produces one `DockFrame` per display refresh, which

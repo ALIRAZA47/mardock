@@ -1,0 +1,2267 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- artifact:begin -->
+<title>MarDock Playground</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: a live desktop "stage" running the real dock beside an inspector column; they stack on phones. */
+:root {
+  --bg: #e8ecf1;
+  --surface: #f6f8fa;
+  --raised: #ffffff;
+  --ink: #0f1b2c;
+  --muted: #59657a;
+  --line: #d3dae3;
+  --accent: #0b7491;
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(11, 116, 145, 0.12);
+  --ring: rgba(15, 27, 44, 0.14);
+  --lift: 0 1px 2px rgba(15, 27, 44, 0.06), 0 10px 30px rgba(15, 27, 44, 0.08);
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  --mac-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0a0f17; --surface: #0f1622; --raised: #172133; --ink: #e4ebf4; --muted: #8e9bb0; --line: #233046;
+    --accent: #4fc7e3; --accent-ink: #052430; --accent-soft: rgba(79, 199, 227, 0.14); --ring: rgba(255, 255, 255, 0.08);
+    --lift: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.35);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0a0f17; --surface: #0f1622; --raised: #172133; --ink: #e4ebf4; --muted: #8e9bb0; --line: #233046;
+  --accent: #4fc7e3; --accent-ink: #052430; --accent-soft: rgba(79, 199, 227, 0.14); --ring: rgba(255, 255, 255, 0.08);
+  --lift: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.35);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-size: 14px; line-height: 1.45; }
+.page {
+  max-width: 1720px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 18px 40px;
+}
+.masthead { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 24px; margin-bottom: 16px; }
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.brand svg { flex: none; width: 40px; height: 40px; }
+.brand h1 { margin: 0; font: 700 22px/1.15 var(--font-display); letter-spacing: -0.015em; text-wrap: balance; }
+.brand h1 span { color: var(--muted); font-weight: 500; }
+.lede { margin: 2px 0 0; color: var(--muted); max-width: 72ch; text-wrap: pretty; }
+.workbench { display: grid; grid-template-columns: minmax(0, 1fr) 372px; gap: 20px; align-items: start; }
+.stage-col { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 14px); min-width: 0; }
+.stage {
+  position: relative; overflow: hidden; border-radius: 12px; height: clamp(440px, calc(100vh - 150px), 880px);
+  background: #000; box-shadow: 0 0 0 1px var(--ring), var(--lift);
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; outline: none;
+}
+.stage:focus-visible { box-shadow: 0 0 0 2px var(--accent), var(--lift); }
+.hints { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 12px 2px 0; color: var(--muted); font-size: 13px; }
+.hints b { color: var(--ink); font-weight: 600; }
+.fidelity { margin: 8px 2px 0; color: var(--muted); font-size: 12.5px; max-width: 90ch; }
+@media (max-width: 1020px) {
+  .workbench { grid-template-columns: minmax(0, 1fr); }
+  .stage-col { position: static; }
+  .stage { height: clamp(420px, 62vh, 620px); }
+}
+
+/* ---------- Inspector ---------- */
+.inspector { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; min-width: 0; }
+.ins-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--raised); }
+.ins-head strong { font-size: 13.5px; }
+.ins-head .count { color: var(--muted); font-size: 12.5px; }
+.ins-head .spacer { flex: 1; }
+.sec { border-bottom: 1px solid var(--line); }
+.sec:last-child { border-bottom: 0; }
+.sec > h2, .sec > details > summary {
+  margin: 0; padding: 14px 16px 6px; font-size: 11.5px; font-weight: 650; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted);
+}
+.sec > details > summary { cursor: pointer; padding-bottom: 12px; list-style: none; display: flex; align-items: center; gap: 8px; }
+.sec > details > summary::-webkit-details-marker { display: none; }
+.sec > details > summary::before { content: ""; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); transition: transform .15s; }
+.sec > details[open] > summary::before { transform: rotate(45deg); }
+.sec > details[open] > summary { padding-bottom: 6px; }
+.sec .note { padding: 0 16px 12px; color: var(--muted); font-size: 12.5px; }
+.row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px 12px; padding: 8px 16px; min-height: 40px; }
+.row > label, .row > .lbl { min-width: 0; }
+.row.slider { grid-template-columns: minmax(0, 1fr) auto; }
+.row.slider input[type="range"] { grid-column: 1 / -1; width: 100%; margin: 0; accent-color: var(--accent); height: 22px; }
+.row .val { font: 500 12.5px var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.row.disabled { opacity: 0.45; }
+.row.stack { grid-template-columns: minmax(0, 1fr); }
+.sub-lbl { display: block; color: var(--muted); font-size: 12px; }
+input.switch {
+  appearance: none; -webkit-appearance: none; width: 36px; height: 21px; border-radius: 999px; margin: 0;
+  background: var(--line); position: relative; cursor: pointer; transition: background .15s; flex: none;
+}
+input.switch::before {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 17px; height: 17px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: transform .15s;
+}
+input.switch:checked { background: var(--accent); }
+input.switch:checked::before { transform: translateX(15px); }
+input.switch:focus-visible, .seg button:focus-visible, .chip:focus-visible, .btn:focus-visible, .theme-opt:focus-visible, .dot:focus-visible, .wall-opt:focus-visible, select:focus-visible, input[type="color"]:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+input.switch:disabled { cursor: default; }
+.seg { display: inline-flex; flex-wrap: wrap; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 2px; gap: 2px; }
+.seg button {
+  border: 0; background: transparent; color: var(--ink); font: 500 12.5px var(--font-ui); padding: 4px 10px; border-radius: 6px; cursor: pointer;
+}
+.seg button[aria-pressed="true"] { background: var(--raised); box-shadow: 0 0 0 1px var(--line), 0 1px 2px rgba(0,0,0,.08); }
+select { font: 500 12.5px var(--font-ui); color: var(--ink); background: var(--raised); border: 1px solid var(--line); border-radius: 7px; padding: 5px 8px; max-width: 100%; }
+.theme-list { display: grid; gap: 4px; padding: 4px 10px 10px; }
+.theme-opt {
+  display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 12px; text-align: left;
+  border: 1px solid transparent; background: transparent; color: var(--ink); border-radius: 9px; padding: 7px 8px; cursor: pointer; font: inherit;
+}
+.theme-opt:hover { background: var(--accent-soft); }
+.theme-opt[aria-checked="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.theme-opt .sw { width: 34px; height: 24px; border-radius: 7px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.35), 0 0 0 1px var(--line); }
+.theme-opt b { display: block; font-size: 13.5px; }
+.theme-opt small { display: block; color: var(--muted); font-size: 12px; line-height: 1.35; }
+.theme-opt .tick { width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid var(--line); }
+.theme-opt[aria-checked="true"] .tick { border: 5px solid var(--accent); }
+.dots { display: flex; flex-wrap: wrap; gap: 7px; justify-content: flex-end; }
+.dot { width: 20px; height: 20px; border-radius: 50%; border: 0; padding: 0; cursor: pointer; box-shadow: inset 0 0 0 1px rgba(0,0,0,.18); }
+.dot[aria-checked="true"] { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent); }
+.dot.theme-dot { background: conic-gradient(from 210deg, #8f8f96 0 50%, #f2f2f5 0 100%); }
+.walls { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.wall-opt { width: 46px; height: 30px; border-radius: 7px; border: 0; padding: 0; cursor: pointer; box-shadow: inset 0 0 0 1px rgba(255,255,255,.2), 0 0 0 1px var(--line); }
+.wall-opt[aria-checked="true"] { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent); }
+.colors { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+input[type="color"] { width: 30px; height: 24px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: var(--raised); cursor: pointer; }
+.btns { display: flex; flex-wrap: wrap; gap: 8px; padding: 6px 16px 16px; }
+.btn {
+  font: 600 12.5px var(--font-ui); border-radius: 8px; padding: 7px 12px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--raised); color: var(--ink);
+}
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.small { padding: 4px 9px; font-size: 12px; }
+.changes { margin: 0 16px 6px; padding: 10px 12px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); font: 12px/1.55 var(--font-mono); color: var(--ink); white-space: pre-wrap; word-break: break-word; max-height: 220px; overflow: auto; }
+.changes.empty { color: var(--muted); font-family: var(--font-ui); }
+.copy-fallback { margin: 0 16px 12px; width: calc(100% - 32px); height: 120px; font: 11.5px var(--font-mono); }
+
+/* ---------- Stage: a pretend Mac desktop ---------- */
+.wall { position: absolute; inset: 0; }
+canvas.wall { width: 100%; height: 100%; display: block; }
+.menubar {
+  position: absolute; left: 0; right: 0; top: 0; height: 24px; z-index: 2; display: flex; align-items: center; gap: 18px; padding: 0 14px;
+  font: 500 13px/24px var(--mac-font); color: rgba(0,0,0,.86); background: rgba(255,255,255,.42);
+  -webkit-backdrop-filter: blur(30px) saturate(1.8); backdrop-filter: blur(30px) saturate(1.8); white-space: nowrap; overflow: hidden;
+}
+.stage.dark .menubar { color: rgba(255,255,255,.92); background: rgba(30,30,32,.42); }
+.menubar b { font-weight: 700; }
+.menubar .right { margin-left: auto; display: flex; gap: 14px; align-items: center; }
+.menubar .right svg { width: 18px; height: 14px; display: block; }
+.menubar .menus span { margin-right: 18px; }
+@media (max-width: 560px) { .menubar .menus { display: none; } }
+.win {
+  position: absolute; left: 0; top: 0; z-index: 1; width: 440px; max-width: 86%; border-radius: 12px; overflow: hidden;
+  background: #fbfbfc; color: #1d1d1f; box-shadow: 0 0 0 0.5px rgba(0,0,0,.28), 0 24px 60px rgba(0,0,0,.38);
+  font: 13px/1.5 var(--mac-font);
+}
+.win .bar { height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 12px; background: #f1f1f3; border-bottom: 1px solid rgba(0,0,0,.08); cursor: grab; touch-action: none; }
+.win .bar:active { cursor: grabbing; }
+.win .bar i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; box-shadow: inset 0 0 0 0.5px rgba(0,0,0,.2); }
+.win .bar span { flex: 1; text-align: center; font-weight: 600; color: rgba(0,0,0,.7); margin-right: 52px; }
+.win .content { padding: 16px 20px 20px; }
+.win h3 { margin: 0 0 8px; font-size: 15px; }
+.win ul { margin: 0; padding-left: 0; list-style: none; }
+.win li { display: flex; gap: 8px; align-items: center; padding: 3px 0; }
+.win li::before { content: ""; width: 13px; height: 13px; border-radius: 4px; box-shadow: inset 0 0 0 1.2px rgba(0,0,0,.35); flex: none; }
+.win li.done::before { background: #0a84ff; box-shadow: none; }
+.win .photo { height: 64px; margin-top: 12px; border-radius: 8px; background: linear-gradient(120deg, #ff9f6e, #ff5f9e 45%, #7a6bff 75%, #36c6e6); }
+.stage.dark .win { background: #26262a; color: #f2f2f4; box-shadow: 0 0 0 0.5px rgba(255,255,255,.18), 0 24px 60px rgba(0,0,0,.55); }
+.stage.dark .win .bar { background: #303034; border-bottom-color: rgba(255,255,255,.06); }
+.stage.dark .win .bar span { color: rgba(255,255,255,.75); }
+.stage.dark .win li::before { box-shadow: inset 0 0 0 1.2px rgba(255,255,255,.45); }
+
+.panel { position: absolute; left: 0; top: 0; z-index: 3; pointer-events: none; }
+.panel > * { position: absolute; left: 0; top: 0; }
+.shelf { overflow: hidden; -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; -webkit-mask-position: left top, right top, center top; mask-position: left top, right top, center top; }
+.shelf > div { position: absolute; inset: 0; }
+.shelf > .spec { inset: auto; left: 0; top: 0; background: radial-gradient(closest-side, #fff, rgba(255,255,255,0)); opacity: 0; }
+.shelf-border { -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); }
+.floor-border { overflow: visible; }
+#tiles > *, #indicators > * { position: absolute; left: 0; top: 0; }
+.tile { will-change: transform, opacity; }
+.tile img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; -webkit-user-drag: none; pointer-events: none; }
+.tile img.refl { -webkit-mask-image: linear-gradient(to top, rgba(0,0,0,.5) 0%, rgba(0,0,0,0) 42%); mask-image: linear-gradient(to top, rgba(0,0,0,.5) 0%, rgba(0,0,0,0) 42%); transform-origin: 50% 50%; }
+.ind { will-change: transform; }
+.dock-label {
+  height: 26px; padding: 0 15px; border-radius: 8px; white-space: nowrap; opacity: 0;
+  font: 500 13px/26px var(--mac-font); color: rgba(0,0,0,.86); background: rgba(232,238,248,.52);
+  -webkit-backdrop-filter: blur(30px) saturate(1.05); backdrop-filter: blur(30px) saturate(1.05);
+  box-shadow: 0 0 0 0.5px rgba(0,0,0,.14), 0 3px 10px rgba(0,0,0,.12);
+}
+.dock-label.dark { color: rgba(255,255,255,.94); background: rgba(28,28,32,.5); box-shadow: 0 0 0 0.5px rgba(255,255,255,.14), 0 3px 10px rgba(0,0,0,.25); }
+.dock-label.opaque { -webkit-backdrop-filter: none; backdrop-filter: none; background: rgb(236,236,238); }
+.dock-label.dark.opaque { background: rgb(44,44,47); }
+.fx { position: absolute; inset: 0; z-index: 6; pointer-events: none; width: 100%; height: 100%; }
+.drag-img { position: absolute; left: 0; top: 0; z-index: 8; pointer-events: none; opacity: .92; will-change: transform; }
+.drag-img img { width: 100%; height: 100%; display: block; }
+.drag-img .rm {
+  position: absolute; left: 50%; top: 100%; transform: translate(-50%, 4px); padding: 2px 8px; border-radius: 999px;
+  font: 600 11px/16px var(--mac-font); color: #fff; background: rgba(20,20,24,.72); white-space: nowrap;
+}
+.catcher { position: absolute; left: 0; top: 0; z-index: 7; display: none; touch-action: none; }
+@media (pointer: coarse) { .catcher { display: block; } }
+.ctx {
+  position: absolute; z-index: 10; min-width: 200px; padding: 5px; border-radius: 9px; pointer-events: auto;
+  font: 13px/1 var(--mac-font); color: #1d1d1f; background: rgba(236,238,244,.8);
+  -webkit-backdrop-filter: blur(40px) saturate(1.2); backdrop-filter: blur(40px) saturate(1.2);
+  box-shadow: 0 0 0 0.5px rgba(0,0,0,.22), 0 12px 32px rgba(0,0,0,.28);
+}
+.ctx.dark { color: #f2f2f4; background: rgba(42,42,46,.82); box-shadow: 0 0 0 0.5px rgba(255,255,255,.16), 0 12px 32px rgba(0,0,0,.45); }
+.ctx button {
+  display: flex; align-items: center; gap: 6px; width: 100%; height: 24px; padding: 0 10px 0 6px; border: 0; border-radius: 5px;
+  background: none; color: inherit; font: inherit; text-align: left; cursor: default; white-space: nowrap;
+}
+.ctx button .ck { width: 14px; text-align: center; flex: none; }
+.ctx button .ar { margin-left: auto; padding-left: 18px; opacity: .6; }
+.ctx button:hover, .ctx button:focus-visible, .ctx button.open { background: #0a84ff; color: #fff; outline: none; }
+.ctx button:hover .ar, .ctx button.open .ar { opacity: 1; }
+.ctx button:disabled { opacity: .45; background: none; color: inherit; }
+.ctx .hdr { padding: 6px 10px 6px 26px; font-weight: 600; opacity: .5; }
+.ctx hr { border: 0; height: 1px; background: currentColor; opacity: .12; margin: 5px 8px; }
+.toast {
+  position: absolute; top: 34px; left: 50%; transform: translateX(-50%); z-index: 11; max-width: calc(100% - 32px);
+  padding: 7px 14px; border-radius: 999px; background: rgba(20,20,24,.78); color: #fff; text-align: center;
+  font: 500 12.5px/1.35 var(--mac-font); pointer-events: none;
+}
+.reveal-hint {
+  position: absolute; z-index: 5; padding: 5px 11px; border-radius: 999px; pointer-events: none;
+  background: rgba(20,20,24,.55); color: #fff; font: 500 12px var(--mac-font); white-space: nowrap; transition: opacity .3s;
+}
+@media (prefers-reduced-motion: reduce) { .theme-opt, input.switch, input.switch::before { transition: none; } }
+</style>
+<!-- head:end -->
+</head>
+<body>
+<div class="page">
+  <header class="masthead">
+    <div class="brand">
+      <svg viewBox="0 0 40 40" aria-hidden="true">
+        <defs>
+          <linearGradient id="bm-sea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1b1f5e"/><stop offset=".55" stop-color="#0f5f8c"/><stop offset="1" stop-color="#2fc3c9"/></linearGradient>
+        </defs>
+        <rect x="1" y="1" width="38" height="38" rx="10" fill="url(#bm-sea)"/>
+        <rect x="6" y="25" width="28" height="9" rx="3" fill="#fff" fill-opacity=".28" stroke="#fff" stroke-opacity=".55" stroke-width=".8"/>
+        <rect x="8.5" y="21" width="4.5" height="4.5" rx="1.2" fill="#ff7a6e"/>
+        <rect x="14" y="17" width="6" height="6" rx="1.6" fill="#ffcd5a"/>
+        <rect x="21" y="13.5" width="8" height="8" rx="2" fill="#fff"/>
+        <rect x="30" y="19" width="4.5" height="4.5" rx="1.2" fill="#6ef0be"/>
+      </svg>
+      <div>
+        <h1>MarDock <span>Playground</span></h1>
+        <p class="lede">This dock runs MarDock's own layout and spring physics, ported line for line from the Swift source. Change any setting, then copy your changes into the chat to make them the app's.</p>
+      </div>
+    </div>
+  </header>
+
+  <main class="workbench">
+    <section class="stage-col" aria-label="Dock preview">
+      <div class="stage" id="stage" tabindex="0" aria-label="A pretend Mac desktop with MarDock at the edge of the screen">
+        <div class="wall" id="wall"></div>
+        <canvas class="wall" id="wallCanvas" hidden></canvas>
+        <div class="menubar" id="menubar">
+          <b>Finder</b>
+          <span class="menus"><span>File</span><span>Edit</span><span>View</span><span>Go</span><span>Window</span><span>Help</span></span>
+          <span class="right">
+            <svg viewBox="0 0 18 14" aria-label="MarDock menu"><rect x="1" y="7.5" width="16" height="5" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.3"/><rect x="3" y="4.6" width="3" height="3" rx=".8" fill="currentColor"/><rect x="7.3" y="2.4" width="4.4" height="4.4" rx="1" fill="currentColor"/><rect x="13" y="4.6" width="3" height="3" rx=".8" fill="currentColor"/></svg>
+            <span id="clock"></span>
+          </span>
+        </div>
+        <div class="win" id="win" hidden>
+          <div class="bar" id="winBar"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><span>Launch checklist</span></div>
+          <div class="content">
+            <h3>Before trying MarDock on the laptop</h3>
+            <ul>
+              <li class="done">Pick a theme in the playground</li>
+              <li class="done">Settle on icon size and magnification</li>
+              <li>Drag this window over the dock with “When a window overlaps” on</li>
+              <li>Build with <code>make install</code> and compare</li>
+            </ul>
+            <div class="photo"></div>
+          </div>
+        </div>
+        <div class="panel" id="panel">
+          <div class="shelf-shadow" id="shelfShadow"></div>
+          <div class="shelf" id="shelf"><div class="tint" id="tint"></div><div class="aurora" id="aurora"></div><div class="hl" id="hl"></div><div class="spec" id="spec"></div></div>
+          <div class="shelf-glow" id="shelfGlow"></div>
+          <div class="shelf-border" id="shelfBorder"></div>
+          <svg class="floor-border" id="floorBorder" width="10" height="10" hidden>
+            <defs><linearGradient id="floorGrad" x1="0" y1="1" x2="0" y2="0"><stop id="floorStop0" offset="0"/><stop id="floorStop1" offset="1"/></linearGradient></defs>
+            <polygon id="floorPoly" fill="none" stroke="url(#floorGrad)"/>
+          </svg>
+          <div id="indicators"></div>
+          <div id="tiles"></div>
+          <div class="dock-label" id="label"></div>
+        </div>
+        <canvas class="fx" id="fx"></canvas>
+        <div class="catcher" id="catcher"></div>
+        <div class="reveal-hint" id="revealHint" style="opacity:0">Move the pointer to the edge to show the dock</div>
+        <div class="ctx" id="menu" role="menu" hidden></div>
+        <div class="toast" id="toast" role="status" hidden></div>
+      </div>
+      <p class="hints"><span><b>Hover</b> to magnify</span><span><b>Click</b> an app to open it</span><span><b>Drag</b> icons to reorder, or off the dock to remove</span><span><b>Right-click</b> for menus</span><span><b>⌥-click</b> hides an app</span></p>
+      <p class="fidelity">Exact here: sizes, layout, magnification, springs, bounces and every theme number. Approximate: the frosted glass (macOS draws it, the browser imitates it) and the app icons, which are stand-ins.</p>
+    </section>
+
+    <aside class="inspector" id="inspector" aria-label="Settings"></aside>
+  </main>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+// =====================================================================
+// Core — a straight port of Sources/MarDockCore. Keep in sync.
+// =====================================================================
+
+// Spring.swift: damped harmonic oscillator advanced in closed form.
+class Spring {
+  constructor(value, response = 0.3, dampingFraction = 0.86, precision = 0.001) {
+    this.value = value; this.velocity = 0; this.target = value;
+    this.response = response; this.dampingFraction = dampingFraction; this.precision = precision;
+  }
+  get atRest() { return this.value === this.target && this.velocity === 0; }
+  snap(v) { this.value = v; this.target = v; this.velocity = 0; }
+  step(dt) {
+    if (!(dt > 0) || this.atRest) return;
+    if (!isFinite(this.value) || !isFinite(this.velocity) || !isFinite(this.target)) { this.snap(isFinite(this.target) ? this.target : 0); return; }
+    dt = Math.min(dt, 1);
+    const omega = 2 * Math.PI / Math.max(this.response, 1e-4);
+    const zeta = Math.max(this.dampingFraction, 0);
+    const x0 = this.value - this.target, v0 = this.velocity;
+    let x, v;
+    if (zeta < 0.999) {
+      const wd = omega * Math.sqrt(1 - zeta * zeta);
+      const decay = Math.exp(-zeta * omega * dt);
+      const a = x0, b = (v0 + zeta * omega * x0) / wd;
+      const c = Math.cos(wd * dt), s = Math.sin(wd * dt);
+      x = decay * (a * c + b * s);
+      v = decay * ((b * wd - zeta * omega * a) * c - (a * wd + zeta * omega * b) * s);
+    } else if (zeta <= 1.001) {
+      const decay = Math.exp(-omega * dt);
+      const b = v0 + omega * x0;
+      x = (x0 + b * dt) * decay;
+      v = (b - omega * (x0 + b * dt)) * decay;
+    } else {
+      const root = Math.sqrt(zeta * zeta - 1);
+      const r1 = -omega * (zeta - root), r2 = -omega * (zeta + root);
+      const c2 = (v0 - r1 * x0) / (r2 - r1), c1 = x0 - c2;
+      const e1 = Math.exp(r1 * dt), e2 = Math.exp(r2 * dt);
+      x = c1 * e1 + c2 * e2;
+      v = c1 * r1 * e1 + c2 * r2 * e2;
+    }
+    if (Math.abs(x) < this.precision && Math.abs(v) < this.precision * 10) { this.value = this.target; this.velocity = 0; }
+    else { this.value = this.target + x; this.velocity = v; }
+  }
+}
+
+// Magnifier.swift: the axis warp. X(focus) == focus, so the icon under the pointer stays under it.
+function Magnifier(focus, peakScale, radius) {
+  const peak = Math.max(1, peakScale), r = Math.max(radius, 1);
+  const bump = d => d >= r ? r / 2 : d <= -r ? -r / 2 : d / 2 + r / (2 * Math.PI) * Math.sin(Math.PI * d / r);
+  return {
+    scale(u) {
+      if (peak <= 1) return 1;
+      const t = Math.abs(u - focus) / r;
+      return t < 1 ? 1 + (peak - 1) * 0.5 * (1 + Math.cos(Math.PI * t)) : 1;
+    },
+    warp(u) { return peak <= 1 ? u : u + (peak - 1) * bump(u - focus); },
+  };
+}
+
+// BounceCurve.swift: the launch hop with squash and stretch.
+const BounceCurve = {
+  period: 0.62,
+  sample(elapsed, period = 0.62) {
+    if (!(elapsed > 0) || !(period > 0)) return { height: 0, mainScale: 1, crossScale: 1 };
+    const phase = elapsed / period, p = phase - Math.floor(phase);
+    const height = 4 * p * (1 - p);
+    const contact = Math.max(0, 1 - Math.min(p, 1 - p) / 0.1);
+    const stretch = Math.max(0, 1 - Math.abs(p - 0.5) / 0.5) * (1 - contact);
+    return {
+      height,
+      crossScale: 1 - 0.12 * contact + 0.05 * stretch * (1 - height),
+      mainScale: 1 + 0.10 * contact - 0.03 * stretch * (1 - height),
+    };
+  },
+  stopTime(start, request, period = 0.62) {
+    const elapsed = Math.max(0, request - start);
+    return start + Math.max(1, Math.ceil(elapsed / period)) * period;
+  },
+};
+
+// DockMetrics.swift
+class DockMetrics {
+  constructor(o) { Object.assign(this, { iconSize: 56, spacing: 8, peakScale: 1.8, spread: 3, endPadding: 9, edgeGap: 6, insetBottom: 9, insetTop: 7, separatorWidth: 18 }, o); }
+  get slot() { return this.iconSize + this.spacing; }
+  get shelfThickness() { return this.insetBottom + this.iconSize + this.insetTop; }
+  get radius() { return Math.max(this.slot * this.spread, this.slot); }
+  get bounceHeight() { return Math.round(this.iconSize * 0.55); }
+  get labelRoom() { return 44; }
+  get requiredDepth() { return this.edgeGap + this.insetBottom + this.iconSize * Math.max(this.peakScale, 1) + this.bounceHeight + this.labelRoom; }
+  get hideDistance() { return this.edgeGap + this.shelfThickness + 24; }
+  equals(o) { return ['iconSize', 'spacing', 'peakScale', 'spread', 'endPadding', 'edgeGap', 'insetBottom', 'insetTop', 'separatorWidth'].every(k => this[k] === o[k]); }
+  static make(s, tallFloor = false, override = null) {
+    const requested = override ?? s.iconSize;
+    const icon = isFinite(requested) ? Math.min(Math.max(requested, 16), 112) : s.iconSize;
+    return new DockMetrics({
+      iconSize: icon,
+      spacing: Math.max(5, Math.round(icon * 0.15)),
+      peakScale: s.magnificationEnabled ? s.magnification : 1,
+      spread: s.magnificationSpread,
+      endPadding: Math.max(8, Math.round(icon * 0.17)),
+      edgeGap: 6,
+      insetBottom: tallFloor ? Math.max(14, Math.round(icon * 0.32)) : Math.max(8, Math.round(icon * 0.17)),
+      insetTop: Math.max(6, Math.round(icon * 0.12)),
+      separatorWidth: Math.max(14, Math.round(icon * 0.34)),
+    });
+  }
+  static fitting(s, tallFloor, tiles, separators, available) {
+    let m = DockMetrics.make(s, tallFloor);
+    if (!(available > 0) || tiles + separators <= 0) return m;
+    for (let i = 0; i < 12; i++) {
+      const needed = tiles * m.slot + separators * m.separatorWidth + 2 * m.endPadding;
+      if (!(needed > available) || !(m.iconSize > 16)) break;
+      const smaller = Math.max(16, Math.floor(m.iconSize * available / needed));
+      if (smaller >= m.iconSize) break;
+      m = DockMetrics.make(s, tallFloor, smaller);
+    }
+    return m;
+  }
+}
+
+// DockFrame.swift
+const itemTop = it => it.baseline + it.lift + it.size * it.crossScale;
+class DockFrame {
+  constructor(o = {}) {
+    Object.assign(this, { items: [], shelfStart: 0, shelfEnd: 0, shelfBaseline: 0, shelfThickness: 0, opacity: 1, reveal: 1, hoveredID: null, label: null, focus: 0, magnification: 0, pointer: null }, o);
+  }
+  get shelfTop() { return this.shelfBaseline + this.shelfThickness; }
+  itemAt(u, v, slop = 4) {
+    if (v < -slop) return null;
+    for (const it of this.items) {
+      if (!it.isLive || it.kind === 'separator') continue;
+      if (!(u >= it.slotStart && u < it.slotEnd)) continue;
+      return v <= Math.max(itemTop(it), this.shelfTop) + slop ? it : null;
+    }
+    return null;
+  }
+  contains(u, v, slop = 0) {
+    if (v < -slop) return false;
+    if (u >= this.shelfStart - slop && u <= this.shelfEnd + slop && v <= this.shelfTop + slop && this.shelfTop > 0) return true;
+    for (const it of this.items) {
+      if (it.isLive && u >= it.slotStart - slop && u <= it.slotEnd + slop && v <= itemTop(it) + slop && itemTop(it) > 0) return true;
+    }
+    return false;
+  }
+  insertionIndex(u, candidates) {
+    const centers = new Map();
+    for (const it of this.items) if (it.isLive && !centers.has(it.id)) centers.set(it.id, it.center);
+    let index = 0;
+    for (const id of candidates) { const c = centers.get(id); if (c !== undefined && c < u) index++; }
+    return index;
+  }
+  item(id) { return this.items.find(it => it.id === id && it.isLive) || null; }
+}
+
+// DockEngine.swift
+class DockEngine {
+  constructor(metrics = new DockMetrics()) {
+    this.metrics = metrics;
+    this.bounceEnabled = true; this.dimHiddenApps = true; this.labelsEnabled = true; this.speed = 1; this.stripCenter = 0;
+    this.items = []; this.gaps = [];
+    this.focus = new Spring(0, 0.07, 1, 0.01);
+    this.amount = new Spring(0, 0.22, 0.95, 0.0005);
+    this.reveal = new Spring(1, 0.36, 0.88, 0.0005);
+    this.labelAlpha = new Spring(0, 0.16, 1, 0.003);
+    this.pointer = null; this.hovered = null; this.labelID = null; this.pressedID = null; this.highlightedID = null; this.draggedID = null;
+    this.clock = 0; this.lastFrame = new DockFrame();
+  }
+  setMetrics(m) {
+    this.metrics = m;
+    if (m.peakScale <= 1.001) this.amount.target = 0; else if (this.pointer) this.amount.target = 1;
+  }
+  setItems(specs, animated) {
+    const seen = new Set();
+    specs = specs.filter(s => !seen.has(s.id) && seen.add(s.id));
+    const existing = new Map(), removingAfter = new Map();
+    let lastSurvivor = null;
+    for (const item of this.items) {
+      if (seen.has(item.spec.id)) { existing.set(item.spec.id, item); lastSurvivor = item.spec.id; continue; }
+      if (!item.removing) {
+        item.removing = true; item.presence.dampingFraction = 1; item.presence.target = 0; item.hover.target = 0; item.press.target = 0;
+      }
+      if (!removingAfter.has(lastSurvivor)) removingAfter.set(lastSurvivor, []);
+      removingAfter.get(lastSurvivor).push(item);
+    }
+    let result = [...(removingAfter.get(null) || [])];
+    for (const spec of specs) {
+      const item = existing.get(spec.id) || this.makeItem(spec, animated);
+      this.apply(spec, item);
+      if (!animated) this.settle(item);
+      result.push(item, ...(removingAfter.get(spec.id) || []));
+    }
+    if (!animated) result = result.filter(i => !i.removing);
+    this.items = result;
+  }
+  setPointer(p) {
+    if (p) {
+      if (!this.pointer && this.amount.value < 0.02) this.focus.snap(p.u); else this.focus.target = p.u;
+      this.amount.target = this.metrics.peakScale > 1.001 ? 1 : 0;
+    } else {
+      this.amount.target = 0;
+    }
+    this.pointer = p;
+  }
+  get isPointerInside() { return !!this.pointer; }
+  setRevealed(shown, animated) { if (animated) this.reveal.target = shown ? 1 : 0; else this.reveal.snap(shown ? 1 : 0); }
+  get isRevealed() { return this.reveal.target >= 1; }
+  setDropGap(index, animated = true) {
+    for (const g of this.gaps) if (g.index !== index && !g.closing) { g.closing = true; g.presence.target = 0; }
+    if (index != null) {
+      const g = this.gaps.find(g => g.index === index);
+      if (g) { g.closing = false; g.presence.target = 1; }
+      else { const gap = { index, presence: new Spring(0, 0.3, 0.9, 0.001), closing: false }; gap.presence.target = 1; this.gaps.push(gap); }
+    }
+    if (!animated) {
+      this.gaps = this.gaps.filter(g => !g.closing);
+      for (const g of this.gaps) g.presence.snap(g.presence.target);
+    }
+  }
+  setDraggedItem(id, animated = true) {
+    const previous = this.draggedID;
+    this.draggedID = id;
+    for (const it of this.items) {
+      if (it.removing) continue;
+      if (it.spec.id === id) {
+        if (animated) it.presence.target = 0; else it.presence.snap(0);
+        it.hover.target = 0; it.press.snap(0);
+      } else if (it.spec.id === previous) {
+        it.presence.target = 1;
+      }
+    }
+  }
+  get hasOpenGap() { return this.gaps.some(g => !g.closing); }
+  commitDrop(insertedID = null) {
+    const ids = new Set([this.draggedID, insertedID].filter(Boolean));
+    for (const it of this.items) if (ids.has(it.spec.id) && !it.removing) { it.presence.dampingFraction = 0.82; it.presence.snap(1); }
+    this.draggedID = null;
+    this.gaps = [];
+  }
+  setPressed(id) { this.pressedID = id; for (const it of this.items) it.press.target = it.spec.id === id ? 1 : 0; }
+  setHighlighted(id) { this.highlightedID = id; for (const it of this.items) it.highlight.target = it.spec.id === id ? 1 : 0; }
+  get isAnimating() {
+    return !this.focus.atRest || !this.amount.atRest || !this.reveal.atRest || !this.labelAlpha.atRest
+      || this.gaps.some(g => !g.presence.atRest) || this.items.some(itemAnimating);
+  }
+  tick(dt) {
+    dt = Math.max(0, isFinite(dt) ? dt : 0) * Math.max(0.1, this.speed);
+    if (dt > 0) {
+      this.clock += dt;
+      this.focus.step(dt); this.amount.step(dt); this.reveal.step(dt); this.labelAlpha.step(dt);
+      for (const it of this.items) {
+        for (const k of ITEM_SPRINGS) it[k].step(dt);
+        if (it.bounceStop != null && this.clock >= it.bounceStop) { it.bounceStart = null; it.bounceStop = null; }
+        else if (it.bounceStart != null && it.bounceStop == null && this.clock - it.bounceStart > 20) it.bounceStop = BounceCurve.stopTime(it.bounceStart, this.clock);
+      }
+      for (const g of this.gaps) g.presence.step(dt);
+      this.gaps = this.gaps.filter(g => !(g.closing && g.presence.atRest));
+      this.items = this.items.filter(it => !(it.removing && it.presence.atRest));
+    }
+    const frame = this.layout();
+    this.updateHover(frame.hoveredID);
+    this.lastFrame = frame;
+    return frame;
+  }
+  makeItem(spec, animated) {
+    const item = {
+      spec, removing: false, bounceStart: null, bounceStop: null,
+      presence: new Spring(animated ? 0 : 1, 0.42, 0.82, 0.001),
+      indicator: new Spring(spec.isRunning ? 1 : 0, 0.3, 1, 0.002),
+      active: new Spring(spec.isActive ? 1 : 0, 0.35, 0.75, 0.002),
+      hover: new Spring(0, 0.22, 0.8, 0.002),
+      press: new Spring(0, 0.16, 0.55, 0.002),
+      highlight: new Spring(0, 0.25, 1, 0.002),
+      dim: new Spring(this.dimHiddenApps && spec.isHidden ? 1 : 0, 0.3, 1, 0.002),
+    };
+    item.presence.target = 1;
+    return item;
+  }
+  apply(spec, item) {
+    item.spec = spec;
+    if (item.removing) { item.removing = false; item.presence.dampingFraction = 0.82; }
+    item.presence.target = spec.id === this.draggedID ? 0 : 1;
+    item.indicator.target = spec.isRunning ? 1 : 0;
+    item.active.target = spec.isActive ? 1 : 0;
+    item.dim.target = this.dimHiddenApps && spec.isHidden ? 1 : 0;
+    item.highlight.target = spec.id === this.highlightedID ? 1 : 0;
+    item.press.target = spec.id === this.pressedID ? 1 : 0;
+    if (spec.isLaunching && this.bounceEnabled) {
+      if (item.bounceStart == null) item.bounceStart = this.clock;
+      item.bounceStop = null;
+    } else if (item.bounceStart != null && item.bounceStop == null) {
+      item.bounceStop = BounceCurve.stopTime(item.bounceStart, this.clock);
+    }
+  }
+  settle(item) { for (const k of ['presence', 'indicator', 'active', 'dim', 'highlight']) item[k].snap(item[k].target); }
+  updateHover(id) {
+    if (id !== this.hovered) { this.hovered = id; for (const it of this.items) it.hover.target = it.spec.id === id ? 1 : 0; }
+    if (id) this.labelID = id;
+    this.labelAlpha.target = (id && !this.draggedID && this.labelsEnabled) ? 1 : 0;
+  }
+  layout() {
+    const m = this.metrics;
+    const slots = [];
+    let live = 0;
+    const appendGaps = index => { for (const g of this.gaps) if (g.index === index) slots.push({ width: m.slot * Math.max(0, g.presence.value), item: null }); };
+    this.items.forEach((item, i) => {
+      if (!item.removing) { appendGaps(live); live++; }
+      const base = item.spec.kind === 'separator' ? m.separatorWidth : m.slot;
+      slots.push({ width: base * Math.max(0, item.presence.value), item: i });
+    });
+    appendGaps(live);
+    for (const g of this.gaps) if (g.index > live) slots.push({ width: m.slot * Math.max(0, g.presence.value), item: null });
+
+    const total = slots.reduce((a, s) => a + s.width, 0);
+    const start = this.stripCenter - total / 2;
+    const progress = Math.min(Math.max(this.amount.value, 0), 1);
+    const mag = Magnifier(this.focus.value, 1 + (m.peakScale - 1) * progress, m.radius);
+    const revealValue = Math.min(Math.max(this.reveal.value, 0), 1.05);
+    const shelfBaseline = m.edgeGap - (1 - revealValue) * m.hideDistance;
+    const iconBaseline = shelfBaseline + m.insetBottom;
+    const magnifying = m.peakScale > 1.001;
+
+    const frameItems = [];
+    let cursor = start;
+    for (const slot of slots) {
+      const a = cursor, b = cursor + slot.width;
+      cursor = b;
+      if (slot.item == null) continue;
+      const item = this.items[slot.item];
+      const lo = mag.warp(a), hi = mag.warp(b);
+      const presence = Math.max(0, item.presence.value);
+      const localScale = (b - a) > 1e-6 ? (hi - lo) / (b - a) : mag.scale(a);
+      let lift = 0, mainScale = 1, crossScale = 1;
+      if (this.bounceEnabled && item.bounceStart != null) {
+        const s = BounceCurve.sample(this.clock - item.bounceStart);
+        lift += s.height * m.bounceHeight; mainScale *= s.mainScale; crossScale *= s.crossScale;
+      }
+      const hover = item.hover.value;
+      lift += hover * (magnifying ? 2 : 5);
+      if (!magnifying) { mainScale *= 1 + 0.06 * hover; crossScale *= 1 + 0.06 * hover; }
+      const press = item.press.value;
+      mainScale *= 1 - 0.1 * press; crossScale *= 1 - 0.1 * press;
+      frameItems.push({
+        id: item.spec.id, kind: item.spec.kind,
+        center: (lo + hi) / 2, size: m.iconSize * localScale * Math.min(presence, 1.08),
+        slotStart: lo, slotEnd: hi, baseline: iconBaseline, lift, mainScale, crossScale,
+        alpha: Math.min(1, presence * 1.5) * (1 - 0.45 * Math.min(Math.max(item.dim.value, 0), 1)),
+        indicator: Math.min(Math.max(item.indicator.value, 0), 1) * Math.min(1, presence * 1.5),
+        activeness: Math.min(Math.max(item.active.value, 0), 1.2),
+        highlight: Math.min(Math.max(item.highlight.value, 0), 1),
+        isLive: !item.removing,
+      });
+    }
+    const padding = m.endPadding - m.spacing / 2;
+    const frame = new DockFrame({
+      items: frameItems,
+      shelfStart: mag.warp(start) - padding, shelfEnd: mag.warp(start + total) + padding,
+      shelfBaseline, shelfThickness: m.shelfThickness,
+      opacity: Math.min(1, Math.max(0, revealValue * 2.2)), reveal: revealValue,
+      focus: this.focus.value, magnification: progress, pointer: this.pointer,
+    });
+    if (this.pointer && !this.draggedID) {
+      const hit = frame.itemAt(this.pointer.u, this.pointer.v);
+      if (hit) frame.hoveredID = hit.id;
+    }
+    if (this.labelID && this.labelAlpha.value > 0.001) {
+      const it = frame.item(this.labelID);
+      if (it) frame.label = { id: this.labelID, u: it.center, v: itemTop(it) + 8, alpha: Math.min(Math.max(this.labelAlpha.value, 0), 1) };
+    }
+    return frame;
+  }
+}
+const ITEM_SPRINGS = ['presence', 'indicator', 'active', 'hover', 'press', 'highlight', 'dim'];
+const itemAnimating = it => ITEM_SPRINGS.some(k => !it[k].atRest) || it.bounceStart != null;
+
+// AutoHide.swift
+class AutoHideLogic {
+  constructor(mode = 'off', revealDelay = 0.12, hideDelay = 0.45) {
+    this.mode = mode; this.revealDelay = revealDelay; this.hideDelay = hideDelay;
+    this.isShown = true; this.edgeSince = null; this.leftSince = null;
+  }
+  update(input) {
+    const wantsHiding = this.mode === 'always' ? true : this.mode === 'smart' ? input.windowOverlaps : false;
+    if (!wantsHiding || input.holdOpen) { this.isShown = true; this.edgeSince = null; this.leftSince = null; return true; }
+    if (this.isShown) {
+      this.edgeSince = null;
+      if (input.pointerInDock || input.pointerAtEdge) this.leftSince = null;
+      else {
+        const since = this.leftSince ?? input.now;
+        this.leftSince = since;
+        if (input.now - since >= this.hideDelay) { this.isShown = false; this.leftSince = null; }
+      }
+    } else {
+      this.leftSince = null;
+      if (input.pointerAtEdge) {
+        const since = this.edgeSince ?? input.now;
+        this.edgeSince = since;
+        if (input.now - since >= this.revealDelay) { this.isShown = true; this.edgeSince = null; }
+      } else this.edgeSince = null;
+    }
+    return this.isShown;
+  }
+}
+
+// DockAxis.swift: u runs along the dock, v away from the screen edge. View coords have a bottom-left origin.
+class DockAxis {
+  constructor(position, width, height) { this.position = position; this.width = width; this.height = height; }
+  toDock(x, y) {
+    switch (this.position) {
+      case 'left': return { u: this.height - y, v: x };
+      case 'right': return { u: this.height - y, v: this.width - x };
+      default: return { u: x, v: y };
+    }
+  }
+  toView(u, v) {
+    switch (this.position) {
+      case 'left': return { x: v, y: this.height - u };
+      case 'right': return { x: this.width - v, y: this.height - u };
+      default: return { x: u, y: v };
+    }
+  }
+  rect(u0, u1, v0, v1) {
+    const a = this.toView(u0, v0), b = this.toView(u1, v1);
+    return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), width: Math.abs(b.x - a.x), height: Math.abs(b.y - a.y) };
+  }
+}
+
+// =====================================================================
+// Themes — Sources/MarDock/Dock/Theme.swift. Keep in sync.
+// =====================================================================
+const white = a => ({ hex: 0xFFFFFF, a });
+const color = (hex, a = 1) => ({ hex, a });
+const STYLE_DEFAULTS = {
+  backdrop: 'popover', appearance: null, tintColors: [], tintOpacity: 0, auroraColors: [], auroraOpacity: 0,
+  innerHighlight: 0.18, borderStart: white(0.5), borderEnd: white(0.1), borderWidth: 1, edgeGlow: null,
+  specular: 0.14, shadowOpacity: 0.26, shadowRadius: 18, cornerFactor: 0.34, accent: null, indicatorGlow: 0.8,
+  reflections: false, floor: false, iconShadow: 0, separatorOpacity: 0.3,
+};
+const THEMES = {
+  glass: { name: 'Glass', tagline: 'Frosted glass that adapts to light and dark.', swatch: [0xDCE7F7, 0x9FB6D9],
+    style: { backdrop: 'popover', innerHighlight: 0.22, borderStart: white(0.55), borderEnd: white(0.12), specular: 0.16, shadowOpacity: 0.24 } },
+  liquid: { name: 'Liquid', tagline: 'Clear, refractive glass with a moving highlight.', swatch: [0xF4FBFF, 0xA8D8F0],
+    style: { backdrop: 'liquidGlass', innerHighlight: 0.32, borderStart: white(0.75), borderEnd: white(0.18), borderWidth: 1.2, specular: 0.34, shadowOpacity: 0.18, shadowRadius: 22, cornerFactor: 0.42 } },
+  aurora: { name: 'Aurora', tagline: 'Slow ribbons of colour drifting under smoked glass.', swatch: [0x5B3FD9, 0x16B8C9],
+    style: { backdrop: 'hudWindow', appearance: 'dark', auroraColors: [0x7B5CFF, 0x22C1FF, 0x2EF2B5, 0xFF5FA8], auroraOpacity: 0.5, innerHighlight: 0.16, borderStart: white(0.42), borderEnd: white(0.06), specular: 0.16, shadowOpacity: 0.32, accent: 0xA594FF } },
+  midnight: { name: 'Midnight', tagline: 'Deep smoke with a neon edge.', swatch: [0x0B1030, 0x00B8D4],
+    style: { backdrop: 'hudWindow', appearance: 'dark', tintColors: [0x050816, 0x111A3D], tintOpacity: 0.62, innerHighlight: 0.07, borderStart: color(0x00E5FF, 0.95), borderEnd: color(0xFF2BD6, 0.85), borderWidth: 1.2, edgeGlow: 0x00E5FF, specular: 0.1, shadowOpacity: 0.4, accent: 0x00E5FF, indicatorGlow: 1 } },
+  sunset: { name: 'Sunset', tagline: 'Warm glass, tinted like golden hour.', swatch: [0xFFB25B, 0xB86BFF],
+    style: { backdrop: 'popover', tintColors: [0xFFB25B, 0xFF6F91, 0x9D6BFF], tintOpacity: 0.42, innerHighlight: 0.26, borderStart: white(0.62), borderEnd: white(0.14), specular: 0.18, shadowOpacity: 0.26, accent: 0xFF8A5B } },
+  mirror: { name: 'Mirror', tagline: 'A glossy floor with reflections, for the classicists.', swatch: [0xE8EEF5, 0x7D8FA6],
+    style: { backdrop: 'popover', innerHighlight: 0.34, borderStart: white(0.85), borderEnd: white(0.25), specular: 0.2, shadowOpacity: 0.22, shadowRadius: 12, reflections: true, floor: true } },
+  minimal: { name: 'Minimal', tagline: 'No shelf. Just your icons, floating.', swatch: [0x2B2F36, 0x50555E],
+    style: { backdrop: 'none', innerHighlight: 0, borderStart: color(0, 0), borderEnd: color(0, 0), borderWidth: 0, specular: 0, shadowOpacity: 0, indicatorGlow: 1, iconShadow: 0.35, separatorOpacity: 0.45 } },
+};
+const THEME_IDS = Object.keys(THEMES);
+const ACCENTS = { theme: null, system: null, blue: 0x0A84FF, purple: 0xBF5AF2, pink: 0xFF375F, red: 0xFF453A, orange: 0xFF9F0A, yellow: 0xFFD60A, green: 0x30D158, teal: 0x40C8E0, graphite: 0x98989D };
+
+// NSVisualEffectView materials, imitated with backdrop-filter. These numbers are the approximate part.
+const MATERIALS = {
+  // [r, g, b, alpha, blur px, saturation]. Popover, full-screen UI and HUD (dark) were fitted to the
+  // CI screenshots of the real app; the rest are estimates.
+  popover:      { label: 'Popover',      light: [230, 238, 248, 0.46, 45, 1.0], dark: [36, 36, 42, 0.5, 45, 1.1] },
+  hudWindow:    { label: 'HUD window',   light: [236, 238, 244, 0.55, 45, 1.0], dark: [22, 22, 26, 0.35, 60, 1.2] },
+  fullScreenUI: { label: 'Full-screen UI', light: [240, 243, 248, 0.32, 45, 0.95], dark: [26, 26, 30, 0.38, 45, 1.1] },
+  menu:         { label: 'Menu',         light: [236, 238, 244, 0.62, 45, 1.0], dark: [34, 34, 38, 0.62, 45, 1.1] },
+  sidebar:      { label: 'Sidebar',      light: [232, 236, 244, 0.5, 50, 1.1], dark: [40, 40, 46, 0.55, 50, 1.15] },
+  sheet:        { label: 'Sheet',        light: [240, 240, 244, 0.8, 45, 1.0], dark: [40, 40, 44, 0.8, 45, 1.0] },
+  titlebar:     { label: 'Title bar',    light: [234, 236, 242, 0.7, 45, 1.0], dark: [44, 44, 48, 0.7, 45, 1.05] },
+  underWindowBackground: { label: 'Under window', light: [226, 230, 238, 0.55, 60, 1.05], dark: [24, 24, 28, 0.55, 60, 1.1] },
+};
+
+// =====================================================================
+// Helpers
+// =====================================================================
+const $ = id => document.getElementById(id);
+const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+const rgbOf = hex => [(hex >> 16) & 255, (hex >> 8) & 255, hex & 255];
+const rgba = (hex, a) => { const [r, g, b] = rgbOf(hex); return `rgba(${r},${g},${b},${+a.toFixed(4)})`; };
+const cssColor = c => rgba(c.hex, c.a);
+const hexStr = hex => '#' + hex.toString(16).padStart(6, '0').toUpperCase();
+const parseHex = s => parseInt(String(s).replace('#', ''), 16) || 0;
+const mixRGBA = (a, b, t) => a.map((x, i) => x + (b[i] - x) * t);
+const deep = o => JSON.parse(JSON.stringify(o));
+const store = {
+  get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage unavailable */ } },
+};
+
+// =====================================================================
+// State
+// =====================================================================
+const DEFAULT_SETTINGS = {
+  theme: 'glass', accent: 'theme', iconSize: 56, magnificationEnabled: true, magnification: 1.8, magnificationSpread: 3,
+  position: 'bottom', autoHide: 'off', revealDelay: 0.12, showLabels: true, showRunningApps: true, showTrash: true,
+  clickToHide: false, bounceOnLaunch: true, clickRipple: true, reflections: false, indicatorStyle: 'glow',
+  dimHiddenApps: true, animationSpeed: 1,
+};
+const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+const DEFAULT_SCENE = { wallpaper: 'bloom', appearance: 'light', window: false, liquidGlass: false, reduceMotion: prefersReducedMotion, reduceTransparency: false, increaseContrast: false };
+const SETTING_LIMITS = { iconSize: [32, 112], magnification: [1.1, 2.6], magnificationSpread: [1.5, 6], revealDelay: [0, 1.5], animationSpeed: [0.5, 2] };
+
+const APPS = {
+  finder: 'Finder', browser: 'Browser', mail: 'Mail', messages: 'Messages', gallery: 'Gallery', notes: 'Notes',
+  calendar: 'Calendar', music: 'Music', maps: 'Maps', settings: 'Settings', terminal: 'Terminal', trash: 'Trash',
+};
+const DEFAULT_PINS = ['browser', 'mail', 'messages', 'gallery', 'notes', 'calendar', 'music', 'maps', 'settings'];
+
+const hot = window.claude?.hot;
+const saved = hot?.data?.mardock || store.get('mardock-playground') || {};
+const settings = sanitize({ ...DEFAULT_SETTINGS, ...(saved.settings || {}) });
+const scene = { ...DEFAULT_SCENE, ...(saved.scene || {}) };
+const tweaks = saved.tweaks && typeof saved.tweaks === 'object' ? saved.tweaks : {};
+let pins = Array.isArray(saved.pins) ? saved.pins.filter(id => APPS[id] && id !== 'finder' && id !== 'trash') : [...DEFAULT_PINS];
+let order = 0;
+const running = new Map([['finder', { active: true, hidden: false, order: order++ }], ['browser', { active: false, hidden: false, order: order++ }], ['music', { active: false, hidden: false, order: order++ }], ['terminal', { active: false, hidden: false, order: order++ }]]);
+const launching = new Set();
+let entries = [], entriesById = new Map();
+
+function sanitize(s) {
+  for (const [k, [lo, hi]] of Object.entries(SETTING_LIMITS)) s[k] = clamp(Number.isFinite(+s[k]) ? +s[k] : DEFAULT_SETTINGS[k], lo, hi);
+  if (!THEMES[s.theme]) s.theme = 'glass';
+  if (!(s.accent in ACCENTS)) s.accent = 'theme';
+  if (!['bottom', 'left', 'right'].includes(s.position)) s.position = 'bottom';
+  if (!['off', 'always', 'smart'].includes(s.autoHide)) s.autoHide = 'off';
+  if (!['glow', 'dot', 'line', 'none'].includes(s.indicatorStyle)) s.indicatorStyle = 'glow';
+  return s;
+}
+function persist() {
+  const data = { settings, scene, tweaks, pins };
+  store.set('mardock-playground', data);
+}
+hot?.snapshot?.(() => ({ mardock: { settings, scene, tweaks, pins } }));
+
+function styleFor(themeID) {
+  const t = THEMES[themeID];
+  const s = { ...deep(STYLE_DEFAULTS), ...deep(t.style), ...(tweaks[themeID] ? deep(tweaks[themeID]) : {}) };
+  return s;
+}
+function isDark(style) { return style.appearance ? style.appearance === 'dark' : scene.appearance === 'dark'; }
+function systemAccent() { return scene.appearance === 'dark' ? 0x0A84FF : 0x007AFF; }
+function accentHex(style) {
+  if (settings.accent === 'theme') return style.accent ?? systemAccent();
+  if (settings.accent === 'system') return systemAccent();
+  return ACCENTS[settings.accent];
+}
+
+// =====================================================================
+// Icons — stand-ins drawn on canvas (the real dock shows your apps' icons).
+// =====================================================================
+const ICON_PX = 320;
+const icons = {};
+function squircle(ctx, x, y, w, h, n = 5) {
+  const a = w / 2, b = h / 2, cx = x + a, cy = y + b;
+  ctx.beginPath();
+  for (let i = 0; i <= 120; i++) {
+    const t = i / 120 * Math.PI * 2, c = Math.cos(t), s = Math.sin(t);
+    const px = cx + a * Math.sign(c) * Math.pow(Math.abs(c), 2 / n), py = cy + b * Math.sign(s) * Math.pow(Math.abs(s), 2 / n);
+    i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+  }
+  ctx.closePath();
+}
+function lin(ctx, x0, y0, x1, y1, stops) { const g = ctx.createLinearGradient(x0, y0, x1, y1); stops.forEach(([o, c]) => g.addColorStop(o, c)); return g; }
+function rrect(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, r) : ctx.rect(x, y, w, h); }
+
+function drawIcon(id) {
+  const S = ICON_PX, cv = document.createElement('canvas');
+  cv.width = cv.height = S;
+  const ctx = cv.getContext('2d');
+  const B = S * 824 / 1024, O = (S - B) / 2;
+  const X = v => O + v * B, Y = v => O + v * B, L = v => v * B;
+  const body = (fill) => {
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.30)'; ctx.shadowBlur = S * 0.028; ctx.shadowOffsetY = S * 0.012;
+    squircle(ctx, O, O, B, B); ctx.fillStyle = fill; ctx.fill();
+    ctx.restore();
+    ctx.save(); squircle(ctx, O, O, B, B); ctx.clip();
+  };
+  const finish = () => {
+    ctx.fillStyle = lin(ctx, 0, O, 0, O + B * 0.5, [[0, 'rgba(255,255,255,0.18)'], [1, 'rgba(255,255,255,0)']]);
+    ctx.fillRect(O, O, B, B * 0.5);
+    ctx.restore();
+    ctx.save(); squircle(ctx, O + 0.5, O + 0.5, B - 1, B - 1); ctx.strokeStyle = 'rgba(0,0,0,0.12)'; ctx.lineWidth = 1; ctx.stroke(); ctx.restore();
+  };
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  switch (id) {
+    case 'finder': {
+      body(lin(ctx, 0, O, 0, O + B, [[0, '#62CCFF'], [1, '#0A6CF0']]));
+      ctx.fillStyle = 'rgba(255,255,255,0.72)'; rrect(ctx, X(0.2), Y(0.27), L(0.26), L(0.12), L(0.04)); ctx.fill();
+      rrect(ctx, X(0.2), Y(0.32), L(0.6), L(0.42), L(0.06)); ctx.fill();
+      ctx.fillStyle = lin(ctx, 0, Y(0.4), 0, Y(0.78), [[0, '#ffffff'], [1, '#e6f1ff']]);
+      rrect(ctx, X(0.17), Y(0.4), L(0.66), L(0.38), L(0.07)); ctx.fill();
+      ctx.fillStyle = 'rgba(10,108,240,0.25)'; rrect(ctx, X(0.4), Y(0.5), L(0.2), L(0.035), L(0.02)); ctx.fill();
+      finish(); break;
+    }
+    case 'browser': {
+      body(lin(ctx, 0, O, 0, O + B, [[0, '#F7FBFF'], [1, '#D4E6FA']]));
+      const cx = X(0.5), cy = Y(0.5), r = L(0.33);
+      ctx.fillStyle = lin(ctx, 0, cy - r, 0, cy + r, [[0, '#3FD0FF'], [1, '#1265EE']]);
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+      ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.clip();
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = L(0.022);
+      ctx.beginPath(); ctx.ellipse(cx, cy, r * 0.42, r, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx, cy - r); ctx.lineTo(cx, cy + r); ctx.stroke();
+      for (const k of [-0.5, 0, 0.5]) { ctx.beginPath(); ctx.moveTo(cx - r, cy + k * r); ctx.lineTo(cx + r, cy + k * r); ctx.stroke(); }
+      ctx.restore();
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = L(0.02); ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
+      finish(); break;
+    }
+    case 'mail': {
+      body(lin(ctx, 0, O, 0, O + B, [[0, '#6AD4FF'], [1, '#0A7AF5']]));
+      ctx.fillStyle = '#fff'; rrect(ctx, X(0.18), Y(0.29), L(0.64), L(0.43), L(0.05)); ctx.fill();
+      ctx.strokeStyle = 'rgba(10,122,245,0.45)'; ctx.lineWidth = L(0.022);
+      ctx.beginPath(); ctx.moveTo(X(0.21), Y(0.33)); ctx.lineTo(X(0.5), Y(0.54)); ctx.lineTo(X(0.79), Y(0.33)); ctx.stroke();
+      ctx.strokeStyle = 'rgba(10,122,245,0.18)';
+      ctx.beginPath(); ctx.moveTo(X(0.21), Y(0.68)); ctx.lineTo(X(0.41), Y(0.5)); ctx.moveTo(X(0.79), Y(0.68)); ctx.lineTo(X(0.59), Y(0.5)); ctx.stroke();
+      finish(); break;
+    }
+    case 'messages': {
+      body(lin(ctx, 0, O, 0, O + B, [[0, '#7BF08F'], [1, '#14B83A']]));
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.ellipse(X(0.5), Y(0.47), L(0.31), L(0.25), 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(X(0.29), Y(0.6)); ctx.quadraticCurveTo(X(0.28), Y(0.74), X(0.2), Y(0.78)); ctx.quadraticCurveTo(X(0.36), Y(0.77), X(0.42), Y(0.69)); ctx.closePath(); ctx.fill();
+      finish(); break;
+    }
+    case 'gallery': {
+      body(lin(ctx, 0, O, 0, O + B, [[0, '#FFFFFF'], [1, '#EEF0F5']]));
+      ctx.save(); rrect(ctx, X(0.17), Y(0.2), L(0.66), L(0.6), L(0.08)); ctx.clip();
+      ctx.fillStyle = lin(ctx, 0, Y(0.2), 0, Y(0.8), [[0, '#FFB15E'], [0.6, '#FF6F91'], [1, '#C55BD8']]); ctx.fillRect(X(0.17), Y(0.2), L(0.66), L(0.6));
+      ctx.fillStyle = '#FFF1B8'; ctx.beginPath(); ctx.arc(X(0.64), Y(0.37), L(0.075), 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(110,80,240,0.9)'; ctx.beginPath(); ctx.moveTo(X(0.17), Y(0.8)); ctx.lineTo(X(0.39), Y(0.47)); ctx.lineTo(X(0.6), Y(0.8)); ctx.fill();
+      ctx.fillStyle = '#3B2A8F'; ctx.beginPath(); ctx.moveTo(X(0.36), Y(0.8)); ctx.lineTo(X(0.62), Y(0.53)); ctx.lineTo(X(0.83), Y(0.72)); ctx.lineTo(X(0.83), Y(0.8)); ctx.fill();
+      ctx.restore();
+      finish(); break;
+    }
+    case 'notes': {
+      body(lin(ctx, 0, O, 0, O + B, [[0, '#FFFFFF'], [1, '#F3EFE4']]));
+      ctx.fillStyle = lin(ctx, 0, O, 0, Y(0.3), [[0, '#FFE57A'], [1, '#FFC928']]); ctx.fillRect(O, O, B, L(0.3));
+      ctx.fillStyle = 'rgba(0,0,0,0.18)';
+      for (let i = 0; i < 16; i++) { ctx.beginPath(); ctx.arc(X(0.06 + i * 0.059), Y(0.33), L(0.007), 0, Math.PI * 2); ctx.fill(); }
+      ctx.strokeStyle = '#DAD4C6'; ctx.lineWidth = L(0.012);
+      for (const y of [0.46, 0.58, 0.7, 0.82]) { ctx.beginPath(); ctx.moveTo(X(0.12), Y(y)); ctx.lineTo(X(0.88), Y(y)); ctx.stroke(); }
+      finish(); break;
+    }
+    case 'calendar': {
+      body('#FFFFFF');
+      const now = new Date();
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#FF3B30'; ctx.font = `600 ${L(0.15)}px -apple-system, "SF Pro Display", system-ui, sans-serif`;
+      ctx.fillText(now.toLocaleString('en', { month: 'short' }).toUpperCase(), X(0.5), Y(0.24));
+      ctx.fillStyle = '#1C1C1E'; ctx.font = `300 ${L(0.46)}px -apple-system, "SF Pro Display", system-ui, sans-serif`;
+      ctx.fillText(String(now.getDate()), X(0.5), Y(0.6));
+      finish(); break;
+    }
+    case 'music': {
+      body(lin(ctx, 0, O, 0, O + B, [[0, '#FF7C95'], [1, '#F7213D']]));
+      ctx.fillStyle = '#fff'; ctx.strokeStyle = '#fff';
+      const head = (x, y) => { ctx.beginPath(); ctx.ellipse(X(x), Y(y), L(0.085), L(0.064), -0.35, 0, Math.PI * 2); ctx.fill(); };
+      head(0.36, 0.69); head(0.64, 0.63);
+      ctx.lineWidth = L(0.035); ctx.lineCap = 'butt';
+      ctx.beginPath(); ctx.moveTo(X(0.43), Y(0.68)); ctx.lineTo(X(0.43), Y(0.29)); ctx.moveTo(X(0.71), Y(0.62)); ctx.lineTo(X(0.71), Y(0.23)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(X(0.4125), Y(0.27)); ctx.lineTo(X(0.7275), Y(0.2)); ctx.lineTo(X(0.7275), Y(0.29)); ctx.lineTo(X(0.4125), Y(0.36)); ctx.closePath(); ctx.fill();
+      ctx.lineCap = 'round';
+      finish(); break;
+    }
+    case 'maps': {
+      body('#CFEAB9');
+      ctx.fillStyle = '#86CFFF'; ctx.beginPath(); ctx.moveTo(X(0.5), O); ctx.bezierCurveTo(X(0.6), Y(0.25), X(0.8), Y(0.35), X(1), Y(0.42)); ctx.lineTo(X(1), O); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#A6DD8C'; ctx.beginPath(); ctx.ellipse(X(0.2), Y(0.82), L(0.25), L(0.16), 0.3, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = L(0.075);
+      ctx.beginPath(); ctx.moveTo(X(-0.05), Y(0.66)); ctx.bezierCurveTo(X(0.35), Y(0.55), X(0.6), Y(0.7), X(1.05), Y(0.48)); ctx.stroke();
+      ctx.strokeStyle = '#FFD24D'; ctx.lineWidth = L(0.018);
+      ctx.beginPath(); ctx.moveTo(X(-0.05), Y(0.66)); ctx.bezierCurveTo(X(0.35), Y(0.55), X(0.6), Y(0.7), X(1.05), Y(0.48)); ctx.stroke();
+      ctx.fillStyle = '#FF3B30'; ctx.beginPath(); ctx.arc(X(0.5), Y(0.36), L(0.12), Math.PI * 0.85, Math.PI * 2.15); ctx.lineTo(X(0.5), Y(0.6)); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(X(0.5), Y(0.36), L(0.045), 0, Math.PI * 2); ctx.fill();
+      finish(); break;
+    }
+    case 'settings': {
+      body(lin(ctx, 0, O, 0, O + B, [[0, '#DADDE2'], [1, '#989EA7']]));
+      const cx = X(0.5), cy = Y(0.5), teeth = 12;
+      ctx.fillStyle = lin(ctx, 0, Y(0.18), 0, Y(0.82), [[0, '#6E737B'], [1, '#383C43']]);
+      ctx.beginPath();
+      for (let i = 0; i < teeth * 2; i++) {
+        const a0 = i / (teeth * 2) * Math.PI * 2, r = i % 2 ? L(0.27) : L(0.32);
+        const a1 = (i + 1) / (teeth * 2) * Math.PI * 2;
+        ctx.lineTo(cx + Math.cos(a0) * r, cy + Math.sin(a0) * r); ctx.lineTo(cx + Math.cos(a1) * r, cy + Math.sin(a1) * r);
+      }
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#C6CAD0'; ctx.beginPath(); ctx.arc(cx, cy, L(0.17), 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#4A4F57'; ctx.beginPath(); ctx.arc(cx, cy, L(0.075), 0, Math.PI * 2); ctx.fill();
+      finish(); break;
+    }
+    case 'terminal': {
+      body(lin(ctx, 0, O, 0, O + B, [[0, '#3B4049'], [1, '#17191E']]));
+      ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.fillRect(O, O, B, L(0.16));
+      ctx.fillStyle = '#5BE3A6'; ctx.font = `700 ${L(0.22)}px ui-monospace, Menlo, monospace`; ctx.textBaseline = 'middle';
+      ctx.fillText('>_', X(0.17), Y(0.42));
+      finish(); break;
+    }
+    case 'trash': {
+      const top = Y(0.2), bot = Y(0.88), wt = L(0.62), wb = L(0.5), cx = X(0.5);
+      ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.28)'; ctx.shadowBlur = S * 0.03; ctx.shadowOffsetY = S * 0.012;
+      ctx.beginPath(); ctx.moveTo(cx - wt / 2, top); ctx.lineTo(cx + wt / 2, top); ctx.lineTo(cx + wb / 2, bot - L(0.04)); ctx.quadraticCurveTo(cx + wb / 2, bot, cx + wb / 2 - L(0.04), bot);
+      ctx.lineTo(cx - wb / 2 + L(0.04), bot); ctx.quadraticCurveTo(cx - wb / 2, bot, cx - wb / 2, bot - L(0.04)); ctx.closePath();
+      ctx.fillStyle = lin(ctx, cx - wt / 2, 0, cx + wt / 2, 0, [[0, 'rgba(232,236,242,0.92)'], [0.5, 'rgba(255,255,255,0.96)'], [1, 'rgba(214,220,228,0.92)']]); ctx.fill();
+      ctx.restore();
+      ctx.save(); ctx.clip();
+      ctx.strokeStyle = 'rgba(140,150,165,0.35)'; ctx.lineWidth = L(0.012);
+      for (let i = 1; i < 7; i++) { const t = i / 7; ctx.beginPath(); ctx.moveTo(cx - wt / 2 + wt * t, top); ctx.lineTo(cx - wb / 2 + wb * t, bot); ctx.stroke(); }
+      ctx.restore();
+      ctx.fillStyle = 'rgba(248,250,252,0.98)'; ctx.strokeStyle = 'rgba(130,140,155,0.55)'; ctx.lineWidth = L(0.012);
+      ctx.beginPath(); ctx.ellipse(cx, top, wt / 2 + L(0.02), L(0.05), 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = 'rgba(120,130,145,0.35)'; ctx.beginPath(); ctx.ellipse(cx, top + L(0.005), wt / 2 - L(0.02), L(0.03), 0, 0, Math.PI * 2); ctx.fill();
+      break;
+    }
+  }
+  return cv;
+}
+for (const id of Object.keys(APPS)) { const cv = drawIcon(id); icons[id] = cv.toDataURL('image/png'); }
+
+// =====================================================================
+// Wallpapers
+// =====================================================================
+const WALLPAPERS = {
+  bloom: { name: 'Bloom (the CI test backdrop)', thumb: 'linear-gradient(to bottom right, #1D2671, #5B2A86, #C33764, #F7971E)' },
+  lagoon: { name: 'Lagoon', thumb: 'linear-gradient(170deg, #0b1230, #0d3d6b 50%, #1592a8 80%, #5fe0d6)' },
+  dunes: { name: 'Dunes', thumb: 'linear-gradient(180deg, #243064, #8a5a9a 55%, #f0a067 70%, #3a2442 72%)' },
+  daylight: { name: 'Daylight', thumb: 'linear-gradient(180deg, #d9eeff, #f6f8fb 55%, #ffe3cc)' },
+  graphite: { name: 'Graphite', thumb: 'radial-gradient(circle at 30% 25%, #4a505a, #16181c 70%)' },
+};
+
+// =====================================================================
+// Stage, view and controller (the browser's DockController + DockView)
+// =====================================================================
+const stage = $('stage'), panelEl = $('panel'), tilesEl = $('tiles'), indEl = $('indicators'), labelEl = $('label');
+const shelfEl = $('shelf'), shadowEl = $('shelfShadow'), glowEl = $('shelfGlow'), borderEl = $('shelfBorder');
+const tintEl = $('tint'), auroraEl = $('aurora'), hlEl = $('hl'), specEl = $('spec');
+const floorSvg = $('floorBorder'), floorPoly = $('floorPoly');
+const fx = $('fx'), fxCtx = fx.getContext('2d');
+const MENU_BAR = 24;
+const FLOOR_MASK = 'linear-gradient(to bottom right, transparent calc(50% - 0.5px), #000 calc(50% + 0.5px)), linear-gradient(to bottom left, transparent calc(50% - 0.5px), #000 calc(50% + 0.5px)), linear-gradient(#000 0 0)';
+const engine = new DockEngine();
+const autoHide = new AutoHideLogic();
+const view = { W: 0, H: 0, panel: { x: 0, y: 0, w: 0, h: 0 }, style: styleFor('glass'), dark: false, accent: 0x007AFF, B: 0, specAlpha: 0, specPoint: null, labelID: null, labelW: 0, auroraT0: performance.now() };
+let pointer = null, pressed = null, tileDrag = null, winDrag = null, menuOpen = false;
+let pointerInDock = false, pointerAtEdge = false, windowOverlaps = false;
+const tiles = new Map();
+const effects = [];
+let dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+const snap = v => Math.round(v * dpr) / dpr;
+
+function buildEntries() {
+  const out = [{ id: 'finder', kind: 'finder', running: running.get('finder') || null, isLaunching: launching.has('finder') }];
+  const used = new Set(['finder']);
+  for (const id of pins) if (!used.has(id)) { used.add(id); out.push({ id, kind: 'pinned', running: running.get(id) || null, isLaunching: launching.has(id) }); }
+  if (settings.showRunningApps) {
+    const extras = [...running.entries()].filter(([id]) => !used.has(id)).sort((a, b) => a[1].order - b[1].order);
+    let added = false;
+    for (const [id, app] of extras) {
+      if (!added) { out.push({ id: 'separator:running', kind: 'separator', running: null, isLaunching: false }); added = true; }
+      used.add(id); out.push({ id, kind: 'running', running: app, isLaunching: launching.has(id) });
+    }
+  }
+  if (settings.showTrash) {
+    out.push({ id: 'separator:trash', kind: 'separator', running: null, isLaunching: false });
+    out.push({ id: 'trash', kind: 'trash', running: null, isLaunching: false });
+  }
+  return out;
+}
+const specOf = e => ({
+  id: e.id, kind: e.kind === 'separator' ? 'separator' : e.kind === 'trash' ? 'trash' : 'app',
+  isRunning: !!e.running, isActive: !!e.running?.active, isHidden: !!e.running?.hidden, isLaunching: e.isLaunching,
+});
+const isApp = e => e && (e.kind === 'finder' || e.kind === 'pinned' || e.kind === 'running');
+
+function rebuild(animated) {
+  entries = buildEntries();
+  entriesById = new Map(entries.map(e => [e.id, e]));
+  updateGeometry(false);
+  engine.setItems(entries.map(specOf), animated);
+  kick();
+}
+
+function updateGeometry(force) {
+  const floor = view.style.floor && settings.position === 'bottom';
+  const vertical = settings.position !== 'bottom';
+  const available = (vertical ? view.H - MENU_BAR : view.W) - 24;
+  const separators = entries.filter(e => e.kind === 'separator').length;
+  const m = DockMetrics.fitting(settings, floor, entries.length - separators, separators, available);
+  if (!force && m.equals(engine.metrics)) return;
+  engine.setMetrics(m);
+  layoutPanel();
+}
+
+function layoutPanel() {
+  const m = engine.metrics, depth = Math.ceil(m.requiredDepth);
+  const P = settings.position === 'bottom' ? { x: 0, y: view.H - depth, w: view.W, h: depth }
+    : settings.position === 'left' ? { x: 0, y: MENU_BAR, w: depth, h: view.H - MENU_BAR }
+    : { x: view.W - depth, y: MENU_BAR, w: depth, h: view.H - MENU_BAR };
+  view.panel = P;
+  panelEl.style.transform = `translate(${P.x}px,${P.y}px)`;
+  panelEl.style.width = P.w + 'px'; panelEl.style.height = P.h + 'px';
+  const c = $('catcher');
+  c.style.transform = `translate(${P.x}px,${P.y}px)`; c.style.width = P.w + 'px'; c.style.height = P.h + 'px';
+  engine.stripCenter = settings.position === 'bottom' ? P.w / 2 : P.h / 2;
+  const B = Math.ceil(m.iconSize * Math.max(m.peakScale, 1.15) * 1.1);
+  if (B !== view.B) { view.B = B; for (const t of tiles.values()) sizeTile(t); }
+  const origin = settings.position === 'bottom' ? '50% 100%' : settings.position === 'left' ? '0% 50%' : '100% 50%';
+  for (const t of tiles.values()) t.el.style.transformOrigin = origin;
+  view.origin = origin;
+  kick();
+}
+
+// Applies everything that only changes with the theme, appearance or settings (DockView.refreshStyle).
+function configureView() {
+  const style = styleFor(settings.theme);
+  view.style = style;
+  view.dark = isDark(style);
+  view.accent = accentHex(style);
+  stage.classList.toggle('dark', scene.appearance === 'dark');
+  const pos = settings.position;
+  const floor = style.floor && pos === 'bottom';
+  view.systemGlass = style.backdrop === 'liquidGlass' && scene.liquidGlass && !scene.reduceTransparency;
+
+  // Backdrop material.
+  const materialName = style.backdrop === 'liquidGlass' ? 'fullScreenUI' : style.backdrop;
+  if (style.backdrop === 'none') {
+    shelfEl.style.background = 'transparent'; shelfEl.style.backdropFilter = shelfEl.style.webkitBackdropFilter = 'none';
+  } else if (scene.reduceTransparency) {
+    shelfEl.style.background = view.dark ? 'rgb(42,42,45)' : 'rgb(234,234,237)';
+    shelfEl.style.backdropFilter = shelfEl.style.webkitBackdropFilter = 'none';
+  } else if (view.systemGlass) {
+    shelfEl.style.background = view.dark ? 'rgba(0,0,0,0.14)' : 'rgba(255,255,255,0.10)';
+    shelfEl.style.backdropFilter = shelfEl.style.webkitBackdropFilter = 'blur(3px) saturate(1.7) brightness(1.06)';
+  } else {
+    const [r, g, b, a, blur, sat] = (MATERIALS[materialName] || MATERIALS.popover)[view.dark ? 'dark' : 'light'];
+    shelfEl.style.background = `rgba(${r},${g},${b},${a})`;
+    shelfEl.style.backdropFilter = shelfEl.style.webkitBackdropFilter = `blur(${blur}px) saturate(${sat})`;
+  }
+  shelfEl.style.boxShadow = view.systemGlass
+    ? 'inset 0 1px 1px rgba(255,255,255,0.75), inset 0 -1px 1px rgba(255,255,255,0.3), inset 0 0 14px rgba(255,255,255,0.28)' : 'none';
+
+  // Tint and aurora.
+  const tintDir = pos === 'bottom' ? 'to right' : 'to bottom';
+  tintEl.style.background = style.tintColors.length >= 2 ? `linear-gradient(${tintDir}, ${style.tintColors.map(h => hexStr(h)).join(', ')})`
+    : style.tintColors.length === 1 ? hexStr(style.tintColors[0]) : 'none';
+  tintEl.style.opacity = style.tintColors.length ? style.tintOpacity : 0;
+  auroraEl.style.opacity = style.auroraColors.length >= 2 ? style.auroraOpacity : 0;
+  if (style.auroraColors.length < 2) auroraEl.style.background = 'none';
+
+  // Inner highlight and border run from the side of the shelf that faces into the screen.
+  const inner = pos === 'bottom' ? (floor ? 'to top' : 'to bottom') : pos === 'left' ? 'to left' : 'to right';
+  const hl = view.systemGlass ? 0 : style.innerHighlight * (view.dark ? 0.7 : 1);
+  hlEl.style.background = `linear-gradient(${inner}, rgba(255,255,255,${hl}) 0%, rgba(255,255,255,0) 55%)`;
+  const contrast = scene.increaseContrast ? 1.6 : 1;
+  const bs = { ...style.borderStart, a: Math.min(1, style.borderStart.a * contrast) }, be = { ...style.borderEnd, a: Math.min(1, style.borderEnd.a * contrast) };
+  borderEl.style.background = `linear-gradient(${inner}, ${cssColor(bs)}, ${cssColor(be)})`;
+  $('floorStop0').setAttribute('stop-color', cssColor(bs)); $('floorStop1').setAttribute('stop-color', cssColor(be));
+  view.lineWidth = view.systemGlass ? 0 : style.borderWidth * (scene.increaseContrast ? 1.5 : 1);
+
+  // Neon edge (Midnight).
+  if (style.edgeGlow != null) {
+    glowEl.hidden = false;
+    glowEl.style.border = `1.5px solid ${rgba(style.edgeGlow, 0.5)}`;
+    glowEl.style.boxShadow = `0 0 14px ${rgba(style.edgeGlow, 0.9)}, inset 0 0 12px ${rgba(style.edgeGlow, 0.45)}`;
+  } else glowEl.hidden = true;
+
+  // Label follows the theme's forced appearance.
+  labelEl.classList.toggle('dark', view.dark);
+  labelEl.classList.toggle('opaque', scene.reduceTransparency);
+  view.labelID = null;
+
+  view.neutral = view.dark ? [255, 255, 255, 0.85] : [0, 0, 0, 0.62];
+  view.separator = view.dark ? '255,255,255' : '0,0,0';
+  for (const t of tiles.values()) styleTile(t);
+  updateAurora(performance.now());
+  kick();
+}
+
+function makeTile(item) {
+  const t = { id: item.id, kind: item.kind };
+  if (item.kind === 'separator') {
+    t.el = document.createElement('div'); t.el.className = 'sep';
+  } else {
+    t.el = document.createElement('div'); t.el.className = 'tile';
+    t.refl = document.createElement('img'); t.refl.className = 'refl'; t.refl.alt = ''; t.refl.hidden = true;
+    t.img = document.createElement('img'); t.img.alt = ''; t.img.draggable = false; t.refl.draggable = false;
+    t.img.src = t.refl.src = icons[item.id] || icons.finder;
+    t.el.append(t.refl, t.img);
+    t.ind = document.createElement('div'); t.ind.className = 'ind'; t.ind.style.opacity = 0;
+    indEl.append(t.ind);
+    t.el.style.transformOrigin = view.origin;
+    sizeTile(t);
+  }
+  styleTile(t);
+  tilesEl.append(t.el);
+  tiles.set(item.id, t);
+  return t;
+}
+function sizeTile(t) { if (t.kind !== 'separator') { t.el.style.width = t.el.style.height = view.B + 'px'; } }
+function styleTile(t) {
+  if (t.kind === 'separator') {
+    const c = view.separator, o = view.style.separatorOpacity;
+    const dir = settings.position === 'bottom' ? 'to bottom' : 'to right';
+    t.el.style.background = `linear-gradient(${dir}, rgba(${c},0), rgba(${c},${o}), rgba(${c},0))`;
+    return;
+  }
+  t.img.style.filter = view.style.iconShadow > 0 ? `drop-shadow(0 3px 5px rgba(0,0,0,${view.style.iconShadow}))` : 'none';
+  t.colorKey = -1;
+}
+function removeTile(id) { const t = tiles.get(id); if (!t) return; t.el.remove(); t.ind?.remove(); tiles.delete(id); }
+
+function set(el, prop, value) {
+  const cache = el._c || (el._c = {});
+  if (cache[prop] !== value) { cache[prop] = value; el.style[prop] = value; }
+}
+
+// DockView.apply(frame)
+function render(frame) {
+  const m = engine.metrics, st = view.style, pos = settings.position, P = view.panel;
+  const axis = new DockAxis(pos, P.w, P.h);
+  const floor = st.floor && pos === 'bottom';
+  const thickness = floor ? m.insetBottom + m.iconSize * 0.3 : frame.shelfThickness;
+  const r = axis.rect(frame.shelfStart, frame.shelfEnd, frame.shelfBaseline, frame.shelfBaseline + thickness);
+  const x0 = snap(r.x), x1 = snap(r.x + Math.max(r.width, 0));
+  const yTop = snap(P.h - (r.y + Math.max(r.height, 0))), yBot = snap(P.h - r.y);
+  const w = Math.max(0, x1 - x0), h = Math.max(0, yBot - yTop);
+  const radius = floor ? 0 : Math.round(frame.shelfThickness * st.cornerFactor);
+  const floorInset = floor ? Math.round(thickness * 0.6) : null;
+  const opacity = frame.opacity;
+  const hasShelf = st.backdrop !== 'none' || st.tintColors.length || st.auroraColors.length;
+
+  // Shelf: backdrop + decor.
+  const tr = `translate(${x0}px,${yTop}px)`;
+  set(shelfEl, 'transform', tr); set(shelfEl, 'width', w + 'px'); set(shelfEl, 'height', h + 'px');
+  set(shelfEl, 'borderRadius', radius + 'px');
+  // The floor is cut with a mask: clip-path doesn't reliably clip backdrop-filter, and a clipped
+  // ancestor would stop the blur from seeing the desktop at all.
+  const mask = floor ? FLOOR_MASK : 'none';
+  set(shelfEl, 'webkitMaskImage', mask); set(shelfEl, 'maskImage', mask);
+  const maskSize = floor ? `${floorInset}px 100%, ${floorInset}px 100%, calc(100% - ${2 * floorInset - 1}px) 100%` : 'auto';
+  set(shelfEl, 'webkitMaskSize', maskSize); set(shelfEl, 'maskSize', maskSize);
+  set(shelfEl, 'opacity', String(hasShelf ? opacity : 0));
+  set(shelfEl, 'visibility', hasShelf ? 'visible' : 'hidden');
+
+  set(shadowEl, 'transform', tr); set(shadowEl, 'width', w + 'px'); set(shadowEl, 'height', h + 'px'); set(shadowEl, 'borderRadius', radius + 'px');
+  set(shadowEl, 'boxShadow', st.shadowOpacity > 0 && !floor ? `0 5px ${st.shadowRadius * 2}px rgba(0,0,0,${(st.shadowOpacity * opacity).toFixed(3)})` : 'none');
+
+  // Specular highlight that follows the pointer.
+  if (frame.pointer) view.specPoint = { u: frame.pointer.u, v: frame.shelfBaseline + thickness * 0.85 };
+  const target = frame.pointer ? st.specular : 0;
+  view.specAlpha += (target - view.specAlpha) * 0.22;
+  if (Math.abs(view.specAlpha - target) < 0.004) view.specAlpha = target;
+  if (view.specPoint && view.specAlpha > 0) {
+    const size = m.iconSize * 4.2, p = axis.toView(view.specPoint.u, view.specPoint.v);
+    set(specEl, 'transform', `translate(${(p.x - x0 - size / 2).toFixed(2)}px,${(P.h - p.y - yTop - size / 2).toFixed(2)}px)`);
+    set(specEl, 'width', size + 'px'); set(specEl, 'height', size + 'px');
+    set(specEl, 'opacity', view.specAlpha.toFixed(3));
+  } else set(specEl, 'opacity', '0');
+
+  // Border.
+  const lw = view.lineWidth;
+  if (lw > 0 && w > lw * 2) {
+    if (floor) {
+      borderEl.hidden = true; floorSvg.hidden = false;
+      floorSvg.setAttribute('width', w); floorSvg.setAttribute('height', h);
+      set(floorSvg, 'transform', tr); set(floorSvg, 'opacity', String(opacity));
+      const i2 = Math.max(0, floorInset - lw / 2), hw = lw / 2;
+      floorPoly.setAttribute('points', `${hw + i2},${hw} ${w - hw - i2},${hw} ${w - hw},${h - hw} ${hw},${h - hw}`);
+      floorPoly.setAttribute('stroke-width', lw);
+    } else {
+      floorSvg.hidden = true; borderEl.hidden = false;
+      set(borderEl, 'transform', tr); set(borderEl, 'width', w + 'px'); set(borderEl, 'height', h + 'px');
+      set(borderEl, 'borderRadius', radius + 'px'); set(borderEl, 'padding', lw + 'px'); set(borderEl, 'opacity', String(opacity));
+    }
+  } else { borderEl.hidden = true; floorSvg.hidden = true; }
+
+  if (st.edgeGlow != null) {
+    set(glowEl, 'transform', tr); set(glowEl, 'width', w + 'px'); set(glowEl, 'height', h + 'px');
+    set(glowEl, 'borderRadius', radius + 'px'); set(glowEl, 'opacity', String(opacity * 0.85));
+  }
+
+  // Tiles.
+  const reflections = (st.reflections || settings.reflections) && pos === 'bottom';
+  const seen = new Set();
+  const B = view.B;
+  for (const it of frame.items) {
+    seen.add(it.id);
+    const t = tiles.get(it.id) || makeTile(it);
+    if (it.kind === 'separator') { layoutSeparator(t, it, frame, axis); continue; }
+    const size = Math.max(it.size, 0), k = size / B;
+    const [sx, sy] = pos === 'bottom' ? [it.mainScale, it.crossScale] : [it.crossScale, it.mainScale];
+    const base = axis.toView(it.center, it.baseline + it.lift);
+    const bx = base.x, by = P.h - base.y;
+    const tx = pos === 'bottom' ? bx - B / 2 : pos === 'left' ? bx : bx - B;
+    const ty = pos === 'bottom' ? by - B : by - B / 2;
+    set(t.el, 'transform', `translate(${tx.toFixed(2)}px,${ty.toFixed(2)}px) scale(${(Math.max(sx, 0.01) * k).toFixed(4)},${(Math.max(sy, 0.01) * k).toFixed(4)})`);
+    set(t.el, 'opacity', (it.alpha * opacity).toFixed(3));
+    if (reflections && k > 0.01) {
+      t.refl.hidden = false;
+      set(t.refl, 'transform', `translateY(${(B + 2 * it.lift / k).toFixed(2)}px) scaleY(-1)`);
+      set(t.refl, 'opacity', Math.max(0, 1 - it.lift / Math.max(size * 0.9, 1)).toFixed(3));
+    } else t.refl.hidden = true;
+    layoutIndicator(t, it, frame, axis, m);
+  }
+  for (const id of [...tiles.keys()]) if (!seen.has(id)) removeTile(id);
+
+  layoutLabel(frame, axis);
+}
+
+function layoutSeparator(t, it, frame, axis) {
+  const P = view.panel, len = it.size * 0.62;
+  const mid = axis.toView(it.center, it.baseline + it.size / 2);
+  const cx = mid.x, cy = P.h - mid.y;
+  if (settings.position === 'bottom') {
+    set(t.el, 'width', '1px'); set(t.el, 'height', len.toFixed(2) + 'px');
+    set(t.el, 'transform', `translate(${snap(cx - 0.5)}px,${(cy - len / 2).toFixed(2)}px)`);
+  } else {
+    set(t.el, 'width', len.toFixed(2) + 'px'); set(t.el, 'height', '1px');
+    set(t.el, 'transform', `translate(${(cx - len / 2).toFixed(2)}px,${snap(cy - 0.5)}px)`);
+  }
+  set(t.el, 'opacity', (it.alpha * frame.opacity).toFixed(3));
+}
+
+function layoutIndicator(t, it, frame, axis, m) {
+  const style = settings.indicatorStyle;
+  if (style === 'none' || it.kind !== 'app' || it.indicator <= 0.001) { set(t.ind, 'opacity', '0'); return; }
+  const dot = Math.max(3, Math.round(m.iconSize * 0.075));
+  const active = Math.min(Math.max(it.activeness, 0), 1.2);
+  let length, thickness;
+  if (style === 'glow') { length = dot + dot * 2.6 * active; thickness = dot; }
+  else if (style === 'dot') { length = dot; thickness = dot; }
+  else { length = it.size * (0.26 + 0.3 * active); thickness = Math.max(2.5, dot * 0.7); }
+  const floor = view.style.floor && settings.position === 'bottom';
+  const v = floor ? frame.shelfBaseline + dot : frame.shelfBaseline + m.insetBottom * 0.45;
+  const p = axis.toView(it.center, v), P = view.panel;
+  const vertical = settings.position !== 'bottom';
+  const w = vertical ? thickness : length, h = vertical ? length : thickness;
+  set(t.ind, 'width', w.toFixed(2) + 'px'); set(t.ind, 'height', h.toFixed(2) + 'px');
+  set(t.ind, 'transform', `translate(${(p.x - w / 2).toFixed(2)}px,${(P.h - p.y - h / 2).toFixed(2)}px)`);
+  set(t.ind, 'borderRadius', (thickness / 2) + 'px');
+  set(t.ind, 'opacity', (it.indicator * frame.opacity).toFixed(3));
+  const mix = Math.min(active, 1), key = Math.round(mix * 20);
+  const accent = [...rgbOf(view.accent), 1];
+  const c = (style === 'dot' && mix < 0.5) ? view.neutral : mixRGBA(view.neutral, accent, key / 20);
+  set(t.ind, 'background', `rgba(${c[0].toFixed(0)},${c[1].toFixed(0)},${c[2].toFixed(0)},${c[3].toFixed(3)})`);
+  if (style === 'glow') {
+    const so = view.style.indicatorGlow * (0.35 + 0.65 * mix), sr = 2.5 + 3.5 * mix;
+    set(t.ind, 'boxShadow', `0 0 ${(sr * 2).toFixed(1)}px ${rgba(view.accent, so)}`);
+  } else set(t.ind, 'boxShadow', 'none');
+}
+
+function layoutLabel(frame, axis) {
+  const label = frame.label, P = view.panel;
+  if (!label || label.alpha <= 0.001) { set(labelEl, 'opacity', '0'); return; }
+  if (view.labelID !== label.id) {
+    view.labelID = label.id;
+    labelEl.textContent = APPS[label.id] || '';
+    view.labelW = labelEl.offsetWidth; view.labelH = labelEl.offsetHeight || 26;
+  }
+  const rise = (1 - label.alpha) * 6;
+  const a = axis.toView(label.u, label.v - rise);
+  const w = view.labelW, h = view.labelH;
+  let ox, oy;
+  if (settings.position === 'bottom') { ox = a.x - w / 2; oy = a.y; }
+  else if (settings.position === 'left') { ox = a.x; oy = a.y - h / 2; }
+  else { ox = a.x - w; oy = a.y - h / 2; }
+  ox = clamp(ox, 4, Math.max(4, P.w - w - 4)); oy = clamp(oy, 4, Math.max(4, P.h - h - 4));
+  set(labelEl, 'transform', `translate(${snap(ox)}px,${snap(P.h - oy - h)}px)`);
+  set(labelEl, 'opacity', (label.alpha * frame.opacity).toFixed(3));
+}
+
+// Aurora drift (DockView.updateAurora): colours rotate over 7 s, start/end points wander over 9 s and 11 s.
+function updateAurora(now) {
+  const st = view.style;
+  if (st.auroraColors.length < 2) return;
+  const cols = st.auroraColors.map(rgbOf);
+  const shifted = [...cols.slice(1), cols[0]];
+  const still = scene.reduceMotion;
+  const t = (now - view.auroraT0) / 1000;
+  const wave = (period) => { if (still) return 0; const p = (t % (2 * period)) / period; const x = p <= 1 ? p : 2 - p; return x * x * (3 - 2 * x); };
+  const c = wave(7), s = wave(9), e = wave(11);
+  const sp = still ? [0, 0.5] : [0 + 0.35 * s, 0.2 + 0.8 * s];
+  const ep = still ? [1, 0.5] : [1 - 0.35 * e, 0.8 - 0.8 * e];
+  // CA unit points (y up) to a CSS gradient over the shelf box.
+  const bw = parseFloat(shelfEl.style.width) || 400, bh = parseFloat(shelfEl.style.height) || 70;
+  const A = [sp[0] * bw, (1 - sp[1]) * bh], Bp = [ep[0] * bw, (1 - ep[1]) * bh];
+  let dx = Bp[0] - A[0], dy = Bp[1] - A[1];
+  const len = Math.hypot(dx, dy) || 1; dx /= len; dy /= len;
+  const theta = Math.atan2(dx, -dy);
+  const L = Math.abs(bw * Math.sin(theta)) + Math.abs(bh * Math.cos(theta));
+  const S0 = [bw / 2 - dx * L / 2, bh / 2 - dy * L / 2];
+  const tA = ((A[0] - S0[0]) * dx + (A[1] - S0[1]) * dy) / L, tB = ((Bp[0] - S0[0]) * dx + (Bp[1] - S0[1]) * dy) / L;
+  const stops = cols.map((col, i) => {
+    const mixed = col.map((v, j) => Math.round(v + (shifted[i][j] - v) * c));
+    const at = tA + (tB - tA) * i / (cols.length - 1);
+    return `rgb(${mixed.join(',')}) ${(at * 100).toFixed(2)}%`;
+  });
+  auroraEl.style.background = `linear-gradient(${(theta * 180 / Math.PI).toFixed(2)}deg, ${stops.join(', ')})`;
+}
+
+// ---------- Effects: ripple and poof (DockView.ripple, PoofEffect) ----------
+function ripple(id) {
+  if (!settings.clickRipple || scene.reduceMotion) return;
+  const it = engine.lastFrame.item(id); if (!it) return;
+  const axis = new DockAxis(settings.position, view.panel.w, view.panel.h);
+  const p = axis.toView(it.center, it.baseline + it.lift + it.size / 2);
+  effects.push({ type: 'ripple', x: view.panel.x + p.x, y: view.panel.y + view.panel.h - p.y, r: it.size * 0.56, t0: performance.now(), color: view.accent });
+  kick();
+}
+function poof(x, y, id, size) {
+  const img = new Image(); img.src = icons[id] || icons.finder;
+  const parts = [];
+  if (!scene.reduceMotion) {
+    const n = 15;
+    for (let i = 0; i < n; i++) {
+      const ang = Math.random() * Math.PI * 2, rr = Math.sqrt(Math.random()) * size * 0.25;
+      const sp = size * 1.15 + (Math.random() * 2 - 1) * size * 0.45, dir = Math.random() * Math.PI * 2;
+      parts.push({ x: x + Math.cos(ang) * rr, y: y + Math.sin(ang) * rr, vx: Math.cos(dir) * sp, vy: Math.sin(dir) * sp, born: i / n * 0.09, life: 0.55 + (Math.random() * 2 - 1) * 0.2, scale: 0.22 + (Math.random() * 2 - 1) * 0.12 });
+    }
+  }
+  effects.push({ type: 'poof', x, y, img, size, parts, t0: performance.now() });
+  kick();
+}
+const easeOut = t => 1 - Math.pow(1 - t, 2.2);
+function drawEffects(now) {
+  const W = view.W, H = view.H;
+  fxCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  fxCtx.clearRect(0, 0, W, H);
+  for (let i = effects.length - 1; i >= 0; i--) {
+    const e = effects[i], t = (now - e.t0) / 1000;
+    if (e.type === 'ripple') {
+      const p = Math.min(t / 0.55, 1), q = easeOut(p);
+      if (p >= 1) { effects.splice(i, 1); continue; }
+      const s = 0.72 + (1.55 - 0.72) * q, a = 0.95 * (1 - q);
+      fxCtx.save();
+      fxCtx.shadowColor = rgba(e.color, 0.8 * a); fxCtx.shadowBlur = 10 * s;
+      fxCtx.strokeStyle = rgba(e.color, 0.9 * a); fxCtx.lineWidth = 2 * s;
+      fxCtx.beginPath(); fxCtx.arc(e.x, e.y, e.r * s, 0, Math.PI * 2); fxCtx.stroke();
+      fxCtx.restore();
+    } else {
+      if (t > 1) { effects.splice(i, 1); continue; }
+      const p = Math.min(t / 0.22, 1);
+      if (p < 1 && e.img.complete) {
+        const s = scene.reduceMotion ? 1 : 1 + 0.35 * easeOut(p), sz = e.size * s;
+        fxCtx.globalAlpha = 1 - easeOut(p);
+        fxCtx.drawImage(e.img, e.x - sz / 2, e.y - sz / 2, sz, sz);
+        fxCtx.globalAlpha = 1;
+      }
+      for (const q of e.parts) {
+        const age = t - q.born;
+        if (age < 0 || age > q.life) continue;
+        const px = q.x + q.vx * age, py = q.y + q.vy * age;
+        const rad = 32 * (q.scale + 0.9 * age), alpha = Math.max(0, 0.95 - 1.7 * age);
+        const g = fxCtx.createRadialGradient(px, py, 0, px, py, rad);
+        g.addColorStop(0, `rgba(247,247,247,${alpha})`); g.addColorStop(1, 'rgba(247,247,247,0)');
+        fxCtx.fillStyle = g; fxCtx.beginPath(); fxCtx.arc(px, py, rad, 0, Math.PI * 2); fxCtx.fill();
+      }
+    }
+  }
+}
+
+// ---------- App simulation ----------
+function bringToFront(id) {
+  for (const app of running.values()) app.active = false;
+  const app = running.get(id); if (app) { app.active = true; app.hidden = false; }
+  rebuild(true);
+}
+function setHidden(id, hidden) {
+  const app = running.get(id); if (!app) return;
+  app.hidden = hidden;
+  if (hidden && app.active) { app.active = false; const f = running.get('finder'); if (f && id !== 'finder') { f.active = true; f.hidden = false; } }
+  if (!hidden) { for (const a of running.values()) a.active = false; app.active = true; }
+  rebuild(true);
+}
+function quit(id) {
+  const app = running.get(id); if (!app) return;
+  running.delete(id);
+  if (app.active) { const f = running.get('finder'); if (f) f.active = true; }
+  rebuild(true);
+}
+function launch(id) {
+  if (launching.has(id)) return;
+  launching.add(id); rebuild(true);
+  setTimeout(() => {
+    launching.delete(id);
+    for (const a of running.values()) a.active = false;
+    running.set(id, { active: true, hidden: false, order: order++ });
+    rebuild(true);
+  }, 900 + Math.random() * 1100);
+}
+// DockController.activate
+function activate(entry, mods = {}) {
+  if (!entry || entry.kind === 'separator') return;
+  if (entry.kind === 'trash') { ripple(entry.id); toast('In the app, this opens the Trash in Finder.'); return; }
+  if (mods.command) { toast(`In the app, this shows ${APPS[entry.id]} in Finder.`); return; }
+  ripple(entry.id);
+  const app = running.get(entry.id);
+  if (app) {
+    if (mods.option) { setHidden(entry.id, !app.hidden); return; }
+    if (app.active && settings.clickToHide && entry.kind !== 'finder') { setHidden(entry.id, true); return; }
+    bringToFront(entry.id);
+  } else launch(entry.id);
+}
+function unpin(id) { pins = pins.filter(p => p !== id); persist(); rebuild(true); }
+function keepInDock(id) { if (!pins.includes(id)) pins.push(id); persist(); rebuild(true); }
+
+let toastTimer = 0;
+function toast(text) {
+  const el = $('toast'); el.textContent = text; el.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.hidden = true; }, 2400);
+}
+
+// ---------- Pointer ----------
+function stagePoint(e) { const r = stage.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+function toDock(sx, sy) {
+  const P = view.panel;
+  return new DockAxis(settings.position, P.w, P.h).toDock(sx - P.x, P.h - (sy - P.y));
+}
+function atEdge(sx, sy) {
+  const z = 4;
+  return settings.position === 'bottom' ? sy >= view.H - z && sx >= 0 && sx <= view.W
+    : settings.position === 'left' ? sx <= z && sy >= MENU_BAR
+    : sx >= view.W - z && sy >= MENU_BAR;
+}
+function pointerMoved(sx, sy) {
+  const p = toDock(sx, sy), frame = engine.lastFrame;
+  const inside = engine.isRevealed && frame.contains(p.u, p.v, 1);
+  const reach = engine.metrics.slot * 1.5;
+  pointerInDock = inside;
+  pointerAtEdge = atEdge(sx, sy) && p.u >= frame.shelfStart - reach && p.u <= frame.shelfEnd + reach;
+  const was = engine.isPointerInside;
+  if (inside || pressed) engine.setPointer(p);
+  else if (was) engine.setPointer(null);
+  kick();
+}
+function pointerGone() {
+  pointer = null; pointerInDock = false; pointerAtEdge = false;
+  if (engine.isPointerInside && !pressed && !tileDrag) engine.setPointer(null);
+  kick();
+}
+
+function pinnedIDs(excluding) { return entries.filter(e => e.kind === 'pinned' && e.id !== excluding).map(e => e.id); }
+function pinInsertionIndex(u, excluding) { return engine.lastFrame.insertionIndex(u, pinnedIDs(excluding)); }
+function gapIndex(u, excluding) {
+  const pinned = pinnedIDs(excluding);
+  const k = engine.lastFrame.insertionIndex(u, pinned);
+  if (k < pinned.length) return entries.findIndex(e => e.id === pinned[k]);
+  if (pinned.length) return entries.findIndex(e => e.id === pinned[pinned.length - 1]) + 1;
+  return 1;
+}
+const canRemove = id => entriesById.get(id)?.kind === 'pinned';
+
+function iconRectStage(id) {
+  const it = engine.lastFrame.item(id); if (!it) return null;
+  const P = view.panel, axis = new DockAxis(settings.position, P.w, P.h);
+  const r = axis.rect(it.center - it.size / 2, it.center + it.size / 2, it.baseline + it.lift, it.baseline + it.lift + it.size);
+  return { x: P.x + r.x, y: P.y + P.h - r.y - r.height, w: r.width, h: r.height };
+}
+
+function beginTileDrag(id, sx, sy) {
+  const entry = entriesById.get(id);
+  if (!isApp(entry) || entry.kind === 'finder') return false;
+  const rect = iconRectStage(id); if (!rect) return false;
+  const index = entries.findIndex(e => e.id === id);
+  const el = document.createElement('div'); el.className = 'drag-img';
+  el.style.width = rect.w + 'px'; el.style.height = rect.h + 'px';
+  const img = new Image(); img.src = icons[id]; img.alt = ''; el.append(img);
+  const rm = document.createElement('span'); rm.className = 'rm'; rm.textContent = 'Remove'; rm.hidden = true; el.append(rm);
+  stage.append(el);
+  tileDrag = { id, el, rm, dx: sx - rect.x, dy: sy - rect.y, origin: rect };
+  moveDragImage(sx, sy);
+  pressed = null;
+  engine.setPressed(null);
+  engine.setDraggedItem(id, false);
+  engine.setDropGap(index, false);
+  kick();
+  return true;
+}
+function moveDragImage(sx, sy) { tileDrag.el.style.transform = `translate(${sx - tileDrag.dx}px,${sy - tileDrag.dy}px)`; }
+function dragMoved(sx, sy) {
+  moveDragImage(sx, sy);
+  const p = toDock(sx, sy), frame = engine.lastFrame;
+  const over = frame.contains(p.u, p.v, engine.metrics.iconSize * 0.6);
+  if (over) { engine.setPointer(p); engine.setDropGap(gapIndex(p.u, tileDrag.id)); }
+  else { if (engine.isPointerInside) engine.setPointer(null); engine.setDropGap(null); }
+  tileDrag.rm.hidden = over || !canRemove(tileDrag.id);
+  kick();
+}
+function endTileDrag(sx, sy) {
+  const { id, el, origin } = tileDrag;
+  const p = toDock(sx, sy), frame = engine.lastFrame;
+  const over = frame.contains(p.u, p.v, engine.metrics.iconSize * 0.6);
+  tileDrag = null;
+  if (over) {
+    el.remove();
+    const index = pinInsertionIndex(p.u, id);
+    const list = pins.filter(x => x !== id);
+    list.splice(Math.min(Math.max(index, 0), list.length), 0, id);
+    pins = list; persist();
+    rebuild(true);
+    engine.commitDrop(id);
+  } else if (canRemove(id)) {
+    el.remove();
+    poof(sx, sy, id, engine.metrics.iconSize);
+    pins = pins.filter(x => x !== id); persist();
+    rebuild(true);
+    engine.setDropGap(null);
+    engine.setDraggedItem(null);
+  } else {
+    // Cancelled away from the dock: the image slides home while the tile grows back.
+    engine.setDropGap(null);
+    engine.setDraggedItem(null);
+    el.style.transition = 'transform .22s ease-out, opacity .22s ease-out';
+    el.style.transform = `translate(${origin.x}px,${origin.y}px)`;
+    el.style.opacity = '0';
+    setTimeout(() => el.remove(), 260);
+  }
+  if (engine.isPointerInside && !over) engine.setPointer(null);
+  kick();
+}
+
+stage.addEventListener('pointerdown', e => {
+  if (menuOpen && !e.target.closest?.('.ctx')) closeMenu();
+  if (menuOpen) return;
+  const s = stagePoint(e);
+  pointer = s;
+  if (e.pointerType !== 'mouse') pointerMoved(s.x, s.y);
+  if (e.button !== 0) return;
+  const p = toDock(s.x, s.y), frame = engine.lastFrame;
+  const item = engine.isRevealed ? frame.itemAt(p.u, p.v) : null;
+  if (!item) {
+    if (engine.isRevealed && frame.contains(p.u, p.v, 1)) { e.preventDefault(); e.stopPropagation(); }
+    pressed = null; return;
+  }
+  e.preventDefault(); e.stopPropagation();
+  try { stage.setPointerCapture(e.pointerId); } catch { /* not capturable */ }
+  pressed = { id: item.id, x: s.x, y: s.y };
+  engine.setPressed(item.id);
+  kick();
+}, { capture: true });
+
+stage.addEventListener('pointermove', e => {
+  const s = stagePoint(e);
+  pointer = s;
+  if (winDrag) { moveWindow(s); return; }
+  if (tileDrag) { dragMoved(s.x, s.y); return; }
+  if (pressed && Math.hypot(s.x - pressed.x, s.y - pressed.y) > 6) {
+    if (beginTileDrag(pressed.id, s.x, s.y)) { dragMoved(s.x, s.y); return; }
+  }
+  pointerMoved(s.x, s.y);
+});
+
+stage.addEventListener('pointerup', e => {
+  const s = stagePoint(e);
+  if (winDrag) { winDrag = null; return; }
+  if (tileDrag) { endTileDrag(s.x, s.y); if (e.pointerType !== 'mouse') pointerGone(); return; }
+  const released = pressed;
+  pressed = null;
+  engine.setPressed(null);
+  if (released) {
+    const p = toDock(s.x, s.y), it = engine.lastFrame.itemAt(p.u, p.v);
+    if (it && it.id === released.id) activate(entriesById.get(it.id), { option: e.altKey, command: e.metaKey });
+  }
+  if (e.pointerType !== 'mouse') pointerGone();
+  kick();
+});
+stage.addEventListener('pointercancel', () => {
+  if (tileDrag) { const t = tileDrag; endTileDrag(t.origin.x + t.dx, t.origin.y + t.dy); }
+  pressed = null; winDrag = null; engine.setPressed(null); pointerGone();
+});
+stage.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse' && !tileDrag && !pressed && !winDrag) pointerGone(); });
+stage.addEventListener('contextmenu', e => {
+  const s = stagePoint(e), p = toDock(s.x, s.y), frame = engine.lastFrame;
+  if (!engine.isRevealed || !frame.contains(p.u, p.v, 1)) return;
+  e.preventDefault();
+  if (tileDrag) return;
+  pressed = null; engine.setPressed(null);
+  const item = frame.itemAt(p.u, p.v);
+  const entry = item && entriesById.get(item.id);
+  openMenu(entry ? itemMenu(entry) : dockMenu(), s.x, s.y);
+});
+stage.addEventListener('keydown', e => { if (e.key === 'Escape' && menuOpen) closeMenu(); });
+
+// ---------- Window (for "When a window overlaps") ----------
+const win = $('win');
+let winPos = null;
+function placeWindow(pos) {
+  const ww = win.offsetWidth || 440, wh = win.offsetHeight || 260;
+  if (!pos) pos = { x: (view.W - ww) / 2, y: Math.max(MENU_BAR + 18, view.H * 0.16) };
+  pos.x = clamp(pos.x, -ww + 60, view.W - 60);
+  pos.y = clamp(pos.y, MENU_BAR, view.H - 40);
+  winPos = pos;
+  win.style.transform = `translate(${pos.x}px,${pos.y}px)`;
+}
+$('winBar').addEventListener('pointerdown', e => {
+  if (e.button !== 0) return;
+  const s = stagePoint(e);
+  winDrag = { dx: s.x - winPos.x, dy: s.y - winPos.y };
+  try { stage.setPointerCapture(e.pointerId); } catch { /* not capturable */ }
+  e.preventDefault();
+});
+function moveWindow(s) { placeWindow({ x: s.x - winDrag.dx, y: s.y - winDrag.dy }); }
+function windowRect() { if (win.hidden) return null; return { x: winPos.x, y: winPos.y, w: win.offsetWidth, h: win.offsetHeight }; }
+function checkOverlap() {
+  if (settings.autoHide !== 'smart') { windowOverlaps = false; return; }
+  const wr = windowRect();
+  if (!wr) { windowOverlaps = false; return; }
+  const m = engine.metrics, f = engine.lastFrame, P = view.panel;
+  const r = new DockAxis(settings.position, P.w, P.h).rect(f.shelfStart, f.shelfEnd, 0, m.edgeGap + m.shelfThickness);
+  const dr = { x: P.x + r.x, y: P.y + P.h - r.y - r.height, w: r.width, h: r.height };
+  windowOverlaps = wr.x < dr.x + dr.w && wr.x + wr.w > dr.x && wr.y < dr.y + dr.h && wr.y + wr.h > dr.y;
+}
+
+// ---------- Context menus (DockMenus) ----------
+const menuEl = $('menu');
+function itemMenu(entry) {
+  const items = [{ header: APPS[entry.id] }, { sep: true }];
+  if (entry.kind === 'trash') { items.push({ label: 'Open', run: () => activate(entry) }); return items; }
+  const app = running.get(entry.id);
+  if (app) {
+    items.push({ label: 'Show', run: () => activate(entry) });
+    items.push(app.hidden ? { label: 'Unhide', run: () => setHidden(entry.id, false) } : { label: 'Hide', run: () => setHidden(entry.id, true) });
+  } else items.push({ label: 'Open', run: () => activate(entry) });
+  items.push({ label: 'Show in Finder', run: () => activate(entry, { command: true }) });
+  if (entry.kind === 'pinned') items.push({ sep: true }, { label: 'Remove from Dock', run: () => unpin(entry.id) });
+  if (entry.kind === 'running') items.push({ sep: true }, { label: 'Keep in Dock', run: () => keepInDock(entry.id) });
+  if (app && entry.kind !== 'finder') items.push({ sep: true }, { label: 'Quit', alt: 'Force Quit', run: () => quit(entry.id) });
+  return items;
+}
+function dockMenu() {
+  const radio = (list, key) => list.map(([v, l]) => ({ label: l, checked: settings[key] === v, run: () => setSetting(key, v) }));
+  return [
+    { label: 'Theme', sub: THEME_IDS.map(id => ({ label: THEMES[id].name, checked: settings.theme === id, run: () => setSetting('theme', id) })) },
+    { label: 'Position on Screen', sub: radio([['left', 'Left'], ['bottom', 'Bottom'], ['right', 'Right']], 'position') },
+    { label: 'Automatically Hide', sub: radio([['off', 'Never'], ['always', 'Always'], ['smart', 'When a Window Overlaps']], 'autoHide') },
+    { label: 'Magnification', checked: settings.magnificationEnabled, run: () => setSetting('magnificationEnabled', !settings.magnificationEnabled) },
+    { sep: true },
+    { label: 'MarDock Settings…', run: () => { $('inspector').scrollIntoView({ behavior: scene.reduceMotion ? 'auto' : 'smooth', block: 'start' }); } },
+    { label: 'Quit MarDock', run: () => toast('In the app, quitting MarDock brings the macOS Dock back.') },
+  ];
+}
+// Submenus are separate panels in the stage (not nested), so each one blurs the desktop behind it.
+function closeSubmenus() {
+  for (const o of stage.querySelectorAll('.ctx.sub')) o.remove();
+  for (const o of menuEl.querySelectorAll('button.open')) o.classList.remove('open');
+}
+function renderMenu(items, container, altDown) {
+  container.replaceChildren();
+  for (const it of items) {
+    if (it.sep) { container.append(document.createElement('hr')); continue; }
+    if (it.header) { const d = document.createElement('div'); d.className = 'hdr'; d.textContent = it.header; container.append(d); continue; }
+    const b = document.createElement('button');
+    b.type = 'button'; b.setAttribute('role', 'menuitem');
+    b.innerHTML = `<span class="ck">${it.checked ? '✓' : ''}</span><span></span>${it.sub ? '<span class="ar">›</span>' : ''}`;
+    b.children[1].textContent = altDown && it.alt ? it.alt : it.label;
+    if (it.sub) {
+      const open = () => {
+        if (b.classList.contains('open')) return;
+        closeSubmenus();
+        b.classList.add('open');
+        const sub = document.createElement('div');
+        sub.className = 'ctx sub' + (menuEl.classList.contains('dark') ? ' dark' : '');
+        sub.setAttribute('role', 'menu');
+        renderMenu(it.sub, sub, altDown);
+        stage.append(sub);
+        const br = b.getBoundingClientRect(), sr = stage.getBoundingClientRect();
+        const sw = sub.offsetWidth, sh = sub.offsetHeight;
+        let left = br.right - sr.left + 4;
+        if (left + sw > view.W - 4) left = br.left - sr.left - sw - 4;
+        const top = clamp(br.top - sr.top - 5, MENU_BAR + 2, view.H - sh - 4);
+        sub.style.left = left + 'px'; sub.style.top = top + 'px';
+      };
+      b.addEventListener('pointerenter', open);
+      b.addEventListener('click', e => { e.stopPropagation(); open(); });
+    } else {
+      b.addEventListener('pointerenter', () => { if (container === menuEl) closeSubmenus(); });
+      b.addEventListener('click', e => { e.stopPropagation(); closeMenu(); it.run(); });
+    }
+    container.append(b);
+  }
+}
+let lastMenu = null;
+function openMenu(items, x, y) {
+  lastMenu = { items, x, y };
+  menuEl.classList.toggle('dark', view.dark && settings.theme !== 'glass' ? true : scene.appearance === 'dark');
+  renderMenu(items, menuEl, false);
+  menuEl.hidden = false; menuOpen = true;
+  const w = menuEl.offsetWidth, h = menuEl.offsetHeight;
+  const left = clamp(x + 2, 4, view.W - w - 4), top = clamp(y - h - 6 < MENU_BAR ? y + 6 : y - h - 6, MENU_BAR + 2, view.H - h - 4);
+  menuEl.style.left = left + 'px'; menuEl.style.top = top + 'px';
+  engine.setPointer(null);
+  kick();
+}
+function closeMenu() { closeSubmenus(); menuEl.hidden = true; menuEl.replaceChildren(); menuOpen = false; lastMenu = null; kick(); }
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && menuOpen) closeMenu();
+  if (e.key === 'Alt' && menuOpen && lastMenu) renderMenu(lastMenu.items, menuEl, true);
+});
+document.addEventListener('keyup', e => { if (e.key === 'Alt' && menuOpen && lastMenu) renderMenu(lastMenu.items, menuEl, false); });
+document.addEventListener('pointerdown', e => { if (menuOpen && !stage.contains(e.target)) closeMenu(); });
+
+// ---------- Frame loop ----------
+let rafId = 0, lastT = 0, idleFrames = 0;
+function kick() { idleFrames = 0; if (!rafId) { lastT = performance.now(); rafId = requestAnimationFrame(frameLoop); } }
+function frameLoop(now) {
+  rafId = 0;
+  const dt = Math.min(Math.max((now - lastT) / 1000, 0), 1 / 15);
+  lastT = now;
+  checkOverlap();
+  const shown = autoHide.update({ now: now / 1000, pointerAtEdge, pointerInDock, windowOverlaps, holdOpen: menuOpen || !!pressed || !!tileDrag });
+  if (shown !== engine.isRevealed) {
+    engine.setRevealed(shown, true);
+    if (!shown) { engine.setPointer(null); pointerInDock = false; }
+  }
+  const frame = engine.tick(dt);
+  render(frame);
+  if (view.style.auroraColors.length >= 2 && !scene.reduceMotion) updateAurora(now);
+  if (effects.length || fx._dirty) { drawEffects(now); fx._dirty = effects.length > 0; }
+  updateRevealHint();
+  const busy = engine.isAnimating || effects.length || autoHide.edgeSince != null || autoHide.leftSince != null
+    || Math.abs(view.specAlpha - (frame.pointer ? view.style.specular : 0)) > 0
+    || (view.style.auroraColors.length >= 2 && !scene.reduceMotion) || launching.size > 0;
+  if (busy) idleFrames = 0; else idleFrames++;
+  if (idleFrames < 3) rafId = requestAnimationFrame(frameLoop);
+}
+function updateRevealHint() {
+  const el = $('revealHint');
+  const hidden = settings.autoHide !== 'off' && !engine.isRevealed && engine.lastFrame.reveal < 0.05;
+  set(el, 'opacity', hidden ? '1' : '0');
+  if (!hidden) return;
+  const pos = settings.position;
+  const w = el.offsetWidth, h = el.offsetHeight;
+  const x = pos === 'bottom' ? (view.W - w) / 2 : pos === 'left' ? 14 : view.W - w - 14;
+  const y = pos === 'bottom' ? view.H - h - 14 : (view.H + MENU_BAR - h) / 2;
+  set(el, 'transform', `translate(${x}px,${y}px)`);
+}
+
+// ---------- Stage size and wallpaper ----------
+function resizeStage() {
+  const r = stage.getBoundingClientRect();
+  view.W = Math.round(r.width); view.H = Math.round(r.height);
+  dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+  fx.width = Math.round(view.W * dpr); fx.height = Math.round(view.H * dpr);
+  fx._dirty = true;
+  drawWallpaper();
+  updateGeometry(true);
+  if (!win.hidden) placeWindow(winPos);
+  kick();
+}
+function drawWallpaper() {
+  const W = view.W, H = view.H, wall = $('wall'), cv = $('wallCanvas');
+  cv.hidden = scene.wallpaper !== 'dunes';
+  switch (scene.wallpaper) {
+    case 'lagoon':
+      wall.style.background = [
+        `radial-gradient(circle ${W * 0.35}px at ${W * 0.78}px ${H * 0.28}px, rgba(120,90,255,0.45), rgba(120,90,255,0))`,
+        `radial-gradient(circle ${W * 0.4}px at ${W * 0.2}px ${H * 0.95}px, rgba(70,240,210,0.55), rgba(70,240,210,0))`,
+        'linear-gradient(170deg, #0b1230 0%, #0d3d6b 48%, #1592a8 80%, #5fe0d6 100%)'].join(', ');
+      break;
+    case 'daylight':
+      wall.style.background = [
+        `radial-gradient(circle ${W * 0.3}px at ${W * 0.8}px ${H * 0.82}px, rgba(255,170,120,0.5), rgba(255,170,120,0))`,
+        `radial-gradient(circle ${W * 0.35}px at ${W * 0.18}px ${H * 0.3}px, rgba(120,190,255,0.45), rgba(120,190,255,0))`,
+        'linear-gradient(180deg, #d9eeff 0%, #f6f8fb 55%, #ffe3cc 100%)'].join(', ');
+      break;
+    case 'graphite':
+      wall.style.background = `radial-gradient(ellipse ${W * 0.9}px ${H * 0.9}px at ${W * 0.3}px ${H * 0.25}px, #4a505a, #1b1d22 60%, #121317)`;
+      break;
+    case 'dunes':
+      wall.style.background = '#2a2140';
+      drawDunes(cv, W, H);
+      break;
+    default: // bloom: the backdrop the CI screenshots use (SelfTest.swift showBackdrop)
+      wall.style.background = [
+        `radial-gradient(circle ${W * 0.225}px at ${W * 0.16}px ${H * 0.9}px, rgba(48,207,208,0.9), rgba(48,207,208,0))`,
+        `radial-gradient(circle ${W * 0.2}px at ${W * 0.5}px ${H * 0.95}px, rgba(255,216,111,0.9), rgba(255,216,111,0))`,
+        `radial-gradient(circle ${W * 0.225}px at ${W * 0.84}px ${H * 0.84}px, rgba(255,111,216,0.9), rgba(255,111,216,0))`,
+        'linear-gradient(to bottom right, #1D2671, #5B2A86, #C33764, #F7971E)'].join(', ');
+  }
+}
+function drawDunes(cv, W, H) {
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  const c = cv.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const horizon = H * 0.62;
+  c.fillStyle = lin(c, 0, 0, 0, horizon, [[0, '#1e2a5e'], [0.55, '#7a4f93'], [0.85, '#e98a73'], [1, '#f7b26b']]);
+  c.fillRect(0, 0, W, horizon + 2);
+  const sun = c.createRadialGradient(W * 0.68, horizon - H * 0.05, 0, W * 0.68, horizon - H * 0.05, W * 0.22);
+  sun.addColorStop(0, 'rgba(255,236,190,0.95)'); sun.addColorStop(0.12, 'rgba(255,214,150,0.85)'); sun.addColorStop(1, 'rgba(255,190,140,0)');
+  c.fillStyle = sun; c.fillRect(0, 0, W, horizon + 2);
+  const layers = [['#b0688a', '#8e4f7a', 0.6, 0.035], ['#7d4370', '#5f3263', 0.68, 0.05], ['#523060', '#3d2550', 0.77, 0.06], ['#35214a', '#28193a', 0.87, 0.07], ['#22152f', '#170e22', 0.96, 0.06]];
+  layers.forEach(([a, b, base, amp], i) => {
+    c.beginPath(); c.moveTo(0, H);
+    for (let x = 0; x <= W; x += 8) {
+      const t = x / W;
+      const y = H * base - H * amp * (Math.sin(t * Math.PI * (1.3 + i * 0.35) + i * 1.7) * 0.6 + Math.sin(t * Math.PI * (3.1 + i) + i) * 0.4);
+      c.lineTo(x, y);
+    }
+    c.lineTo(W, H); c.closePath();
+    c.fillStyle = lin(c, 0, H * (base - amp), 0, H, [[0, a], [1, b]]); c.fill();
+  });
+}
+
+function tickClock() {
+  const d = new Date();
+  $('clock').textContent = d.toLocaleString('en', { weekday: 'short', day: 'numeric', month: 'short' }) + '  ' + d.toLocaleTimeString('en', { hour: 'numeric', minute: '2-digit' });
+}
+
+// =====================================================================
+// Inspector
+// =====================================================================
+const ins = $('inspector');
+const fmt = {
+  iconSize: v => `${Math.round(v)} pt`, magnification: v => `${v.toFixed(1)}×`, magnificationSpread: v => v.toFixed(1),
+  revealDelay: v => `${v.toFixed(2)} s`, animationSpeed: v => `${v.toFixed(1)}×`,
+};
+const SLIDERS = {
+  iconSize: { label: 'Size', min: 32, max: 112, step: 2 },
+  magnification: { label: 'Magnification amount', min: 1.1, max: 2.6, step: 0.05, off: () => !settings.magnificationEnabled },
+  magnificationSpread: { label: 'Magnification reach', min: 1.5, max: 6, step: 0.1, off: () => !settings.magnificationEnabled },
+  animationSpeed: { label: 'Animation speed', min: 0.5, max: 2, step: 0.1 },
+  revealDelay: { label: 'Reveal delay', min: 0, max: 1.5, step: 0.01, off: () => settings.autoHide === 'off' },
+};
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const slider = k => { const d = SLIDERS[k]; return `<div class="row slider" data-row="${k}"><label for="s-${k}">${d.label}</label><span class="val" id="v-${k}"></span><input type="range" id="s-${k}" data-set="${k}" min="${d.min}" max="${d.max}" step="${d.step}"></div>`; };
+const toggle = (k, label, scope = 'set') => `<div class="row" data-row="${k}"><label for="t-${k}">${label}</label><input type="checkbox" class="switch" id="t-${k}" data-${scope}="${k}"></div>`;
+const seg = (k, label, opts, scope = 'set') => `<div class="row" data-row="${k}"><span class="lbl" id="l-${k}">${label}</span><div class="seg" role="group" aria-labelledby="l-${k}" data-seg="${k}" data-scope="${scope}">${opts.map(([v, l]) => `<button type="button" data-v="${v}">${l}</button>`).join('')}</div></div>`;
+
+function buildInspector() {
+  ins.innerHTML = `
+    <div class="ins-head"><strong>Settings</strong><span class="count" id="changeCount"></span><span class="spacer"></span><button type="button" class="btn small" id="resetAll">Reset</button></div>
+    <section class="sec"><h2>Theme</h2><div class="theme-list" role="radiogroup" aria-label="Theme">${THEME_IDS.map(id => `
+      <button type="button" class="theme-opt" role="radio" data-theme-opt="${id}"><span class="sw" style="background:linear-gradient(135deg, ${hexStr(THEMES[id].swatch[0])}, ${hexStr(THEMES[id].swatch[1])})"></span><span><b>${THEMES[id].name}</b><small>${esc(THEMES[id].tagline)}</small></span><span class="tick"></span></button>`).join('')}
+    </div></section>
+    <section class="sec"><h2>Icons</h2>${slider('iconSize')}${toggle('magnificationEnabled', 'Magnification')}${slider('magnification')}${slider('magnificationSpread')}</section>
+    <section class="sec"><h2>Details</h2>
+      ${seg('indicatorStyle', 'Running indicators', [['glow', 'Glow'], ['dot', 'Dots'], ['line', 'Lines'], ['none', 'None']])}
+      <div class="row stack" data-row="accent"><span class="lbl" id="l-accent">Accent colour</span><div class="dots" role="radiogroup" aria-labelledby="l-accent">${Object.keys(ACCENTS).map(a => `<button type="button" class="dot${a === 'theme' ? ' theme-dot' : ''}" role="radio" data-accent="${a}" title="${a === 'theme' ? 'Theme' : a === 'system' ? 'System' : a[0].toUpperCase() + a.slice(1)}" aria-label="${a === 'theme' ? 'Theme' : a === 'system' ? 'System' : a}" style="${a === 'theme' ? '' : `background:${hexStr(a === 'system' ? 0x007AFF : ACCENTS[a])}`}"></button>`).join('')}</div></div>
+      ${toggle('showLabels', 'Show app names on hover')}${toggle('reflections', 'Reflections')}${toggle('dimHiddenApps', 'Dim icons of hidden apps')}
+    </section>
+    <section class="sec"><h2>Motion</h2>${toggle('bounceOnLaunch', 'Bounce when opening apps')}${toggle('clickRipple', 'Ripple when clicking')}${slider('animationSpeed')}</section>
+    <section class="sec"><h2>Position and hiding</h2>
+      ${seg('position', 'Position on screen', [['left', 'Left'], ['bottom', 'Bottom'], ['right', 'Right']])}
+      <div class="row" data-row="autoHide"><label for="sel-autoHide">Automatically hide</label><select id="sel-autoHide" data-set="autoHide"><option value="off">Never</option><option value="always">Always</option><option value="smart">When a window overlaps</option></select></div>
+      ${slider('revealDelay')}
+    </section>
+    <section class="sec"><h2>Contents</h2>${toggle('showRunningApps', 'Show running apps that aren’t kept in the dock')}${toggle('showTrash', 'Show the Trash')}${toggle('clickToHide', 'Clicking the frontmost app hides it')}</section>
+    <section class="sec"><h2>Desktop</h2><p class="note">Playground only. These stand in for your Mac's wallpaper and system settings.</p>
+      <div class="row" data-row="wallpaper"><span class="lbl" id="l-wall">Wallpaper</span><div class="walls" role="radiogroup" aria-labelledby="l-wall">${Object.entries(WALLPAPERS).map(([id, w]) => `<button type="button" class="wall-opt" role="radio" data-wall="${id}" title="${esc(w.name)}" aria-label="${esc(w.name)}" style="background:${w.thumb}"></button>`).join('')}</div></div>
+      ${seg('appearance', 'Appearance', [['light', 'Light'], ['dark', 'Dark']], 'scene')}
+      ${toggle('window', 'Show a window', 'scene')}
+      ${toggle('liquidGlass', 'Preview Liquid Glass (macOS 26+, approximate)', 'scene')}
+      ${toggle('reduceMotion', 'Reduce motion', 'scene')}${toggle('reduceTransparency', 'Reduce transparency', 'scene')}${toggle('increaseContrast', 'Increase contrast', 'scene')}
+    </section>
+    <section class="sec"><details id="tunerBox"><summary>Fine-tune this theme</summary><div id="tuner"></div></details></section>
+    <section class="sec"><h2>Your changes</h2><pre class="changes" id="changes"></pre>
+      <div class="btns"><button type="button" class="btn primary" id="copyChanges">Copy changes</button><button type="button" class="btn" id="copySwift">Copy theme as Swift</button><button type="button" class="btn" id="copyJSON">Copy settings JSON</button></div>
+      <textarea class="copy-fallback" id="copyFallback" readonly hidden aria-label="Text to copy"></textarea>
+    </section>`;
+
+  ins.addEventListener('input', onInput);
+  ins.addEventListener('change', onInput);
+  ins.addEventListener('click', onClick);
+}
+
+function onInput(e) {
+  const el = e.target;
+  if (el.dataset.set) {
+    const k = el.dataset.set;
+    const v = el.type === 'checkbox' ? el.checked : el.type === 'range' ? parseFloat(el.value) : el.value;
+    setSetting(k, v, e.type === 'input' && el.type === 'range');
+  } else if (el.dataset.scene) {
+    setScene(el.dataset.scene, el.checked);
+  } else if (el.dataset.tweak) {
+    setTweak(el.dataset.tweak, el, e.type);
+  }
+}
+function onClick(e) {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.themeOpt) setSetting('theme', b.dataset.themeOpt);
+  else if (b.dataset.accent) setSetting('accent', b.dataset.accent);
+  else if (b.dataset.wall) setScene('wallpaper', b.dataset.wall);
+  else if (b.dataset.v && b.parentElement.dataset.seg) {
+    const k = b.parentElement.dataset.seg;
+    if (b.parentElement.dataset.scope === 'scene') setScene(k, b.dataset.v); else setSetting(k, b.dataset.v);
+  }
+  else if (b.id === 'resetAll') resetAll();
+  else if (b.id === 'copyChanges') copy(changesText(), b);
+  else if (b.id === 'copySwift') copy(swiftFor(settings.theme), b);
+  else if (b.id === 'copyJSON') copy(JSON.stringify(settings, null, 2), b);
+  else if (b.id === 'resetTheme') { delete tweaks[settings.theme]; persist(); configureView(); updateGeometry(true); renderTuner(); syncInspector(); }
+}
+
+function setSetting(k, v, live = false) {
+  if (settings[k] === v) return;
+  settings[k] = v;
+  sanitize(settings);
+  if (k === 'autoHide' && v === 'smart' && !scene.window) {
+    scene.window = true; win.hidden = false; placeWindow(null);
+    toast('Drag the window over the dock to see it hide.');
+  }
+  if (k === 'theme') { renderTuner(); }
+  applySettings();
+  persist();
+  syncInspector(live ? k : null);
+}
+function setScene(k, v) {
+  if (scene[k] === v) return;
+  scene[k] = v;
+  if (k === 'wallpaper') drawWallpaper();
+  if (k === 'window') { win.hidden = !v; if (v) placeWindow(winPos); }
+  applySettings();
+  persist();
+  syncInspector();
+}
+function applySettings() {
+  engine.bounceEnabled = settings.bounceOnLaunch && !scene.reduceMotion;
+  engine.dimHiddenApps = settings.dimHiddenApps;
+  engine.labelsEnabled = settings.showLabels;
+  engine.speed = scene.reduceMotion ? Math.max(settings.animationSpeed, 1.5) : settings.animationSpeed;
+  autoHide.mode = settings.autoHide; autoHide.revealDelay = settings.revealDelay;
+  configureView();
+  entries = buildEntries();
+  updateGeometry(true);
+  rebuild(true);
+}
+function resetAll() {
+  Object.assign(settings, DEFAULT_SETTINGS);
+  Object.assign(scene, DEFAULT_SCENE);
+  for (const k of Object.keys(tweaks)) delete tweaks[k];
+  pins = [...DEFAULT_PINS];
+  win.hidden = true;
+  drawWallpaper();
+  applySettings(); persist(); renderTuner(); syncInspector();
+}
+
+function syncInspector(liveKey = null) {
+  for (const el of ins.querySelectorAll('[data-set]')) {
+    const k = el.dataset.set, v = settings[k];
+    if (el.type === 'checkbox') el.checked = !!v;
+    else if (el.type === 'range') { if (k !== liveKey) el.value = v; const out = $('v-' + k); if (out) out.textContent = fmt[k] ? fmt[k](v) : v; }
+    else el.value = v;
+  }
+  for (const el of ins.querySelectorAll('[data-scene]')) el.checked = !!scene[el.dataset.scene];
+  for (const g of ins.querySelectorAll('[data-seg]')) {
+    const src = g.dataset.scope === 'scene' ? scene : settings;
+    for (const b of g.children) b.setAttribute('aria-pressed', String(src[g.dataset.seg] === b.dataset.v));
+  }
+  for (const b of ins.querySelectorAll('[data-theme-opt]')) b.setAttribute('aria-checked', String(settings.theme === b.dataset.themeOpt));
+  for (const b of ins.querySelectorAll('[data-accent]')) b.setAttribute('aria-checked', String(settings.accent === b.dataset.accent));
+  for (const b of ins.querySelectorAll('[data-wall]')) b.setAttribute('aria-checked', String(scene.wallpaper === b.dataset.wall));
+  const themeDot = ins.querySelector('[data-accent="theme"]');
+  if (themeDot) { const a = styleFor(settings.theme).accent; themeDot.style.background = a != null ? hexStr(a) : ''; }
+  for (const [k, d] of Object.entries(SLIDERS)) {
+    const row = ins.querySelector(`[data-row="${k}"]`), off = d.off ? d.off() : false;
+    row?.classList.toggle('disabled', off); const input = $('s-' + k); if (input) input.disabled = off;
+  }
+  const reflOff = settings.theme === 'mirror' || settings.position !== 'bottom';
+  $('t-reflections').disabled = reflOff; ins.querySelector('[data-row="reflections"]').classList.toggle('disabled', reflOff);
+  const changes = changeList();
+  $('changeCount').textContent = changes.length ? `${changes.length} change${changes.length === 1 ? '' : 's'} from the app's defaults` : 'App defaults';
+  const box = $('changes');
+  box.textContent = changes.length ? changes.join('\n') : 'Nothing changed yet. Everything matches the app as it is now.';
+  box.classList.toggle('empty', !changes.length);
+}
+
+// ---------- Theme tuner ----------
+const TUNE_NUMBERS = [
+  ['cornerFactor', 'Corner roundness', 0, 0.5, 0.01],
+  ['innerHighlight', 'Inner highlight', 0, 0.6, 0.01],
+  ['specular', 'Pointer highlight', 0, 0.6, 0.01],
+  ['borderWidth', 'Border width', 0, 3, 0.1],
+  ['shadowOpacity', 'Shadow opacity', 0, 0.8, 0.01],
+  ['shadowRadius', 'Shadow radius', 0, 40, 1],
+  ['indicatorGlow', 'Indicator glow', 0, 1, 0.01],
+  ['iconShadow', 'Icon shadow', 0, 0.8, 0.01],
+  ['separatorOpacity', 'Separator opacity', 0, 1, 0.01],
+];
+function renderTuner() {
+  const st = styleFor(settings.theme), t = THEMES[settings.theme];
+  const num = ([k, label, min, max, step], val) => `<div class="row slider"><label for="tw-${k}">${label}</label><span class="val">${(+val).toFixed(step < 1 ? 2 : 0)}</span><input type="range" id="tw-${k}" data-tweak="${k}" min="${min}" max="${max}" step="${step}" value="${val}"></div>`;
+  const colorIn = (key, label, c, i = null) => `<input type="color" data-tweak="${key}"${i != null ? ` data-index="${i}"` : ''} value="${hexStr(c).toLowerCase()}" aria-label="${label}">`;
+  const backdropOpts = [['none', 'No glass'], ...Object.entries(MATERIALS).map(([k, m]) => [k, m.label])];
+  if (st.backdrop === 'liquidGlass') backdropOpts.unshift(['liquidGlass', 'Liquid Glass']);
+  let html = `<p class="note">Edits apply to ${t.name} only and map one to one to <code>ThemeStyle</code> in Theme.swift.</p>
+    <div class="row"><label for="tw-backdrop">Glass material</label><select id="tw-backdrop" data-tweak="backdrop">${backdropOpts.map(([v, l]) => `<option value="${v}"${st.backdrop === v ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
+    <div class="row"><label for="tw-appearance">Glass appearance</label><select id="tw-appearance" data-tweak="appearance"><option value="">Follow the system</option><option value="dark"${st.appearance === 'dark' ? ' selected' : ''}>Always dark</option><option value="light"${st.appearance === 'light' ? ' selected' : ''}>Always light</option></select></div>`;
+  html += TUNE_NUMBERS.map(d => num(d, st[d[0]])).join('');
+  html += `<div class="row slider"><label for="tw-borderStartA">Border opacity, inner edge</label><span class="val">${st.borderStart.a.toFixed(2)}</span><input type="range" id="tw-borderStartA" data-tweak="borderStartA" min="0" max="1" step="0.01" value="${st.borderStart.a}"></div>
+    <div class="row slider"><label for="tw-borderEndA">Border opacity, outer edge</label><span class="val">${st.borderEnd.a.toFixed(2)}</span><input type="range" id="tw-borderEndA" data-tweak="borderEndA" min="0" max="1" step="0.01" value="${st.borderEnd.a}"></div>
+    <div class="row"><span class="lbl">Border colours</span><span class="colors">${colorIn('borderStartHex', 'Inner edge colour', st.borderStart.hex)}${colorIn('borderEndHex', 'Outer edge colour', st.borderEnd.hex)}</span></div>`;
+  const tints = st.tintColors.length ? st.tintColors : [0x9AB8FF, 0xC9A6FF];
+  html += `<div class="row slider"><label for="tw-tintOpacity">Tint opacity</label><span class="val">${(st.tintColors.length ? st.tintOpacity : 0).toFixed(2)}</span><input type="range" id="tw-tintOpacity" data-tweak="tintOpacity" min="0" max="1" step="0.01" value="${st.tintColors.length ? st.tintOpacity : 0}"></div>
+    <div class="row"><span class="lbl">Tint colours</span><span class="colors">${tints.map((c, i) => colorIn('tint', `Tint colour ${i + 1}`, c, i)).join('')}</span></div>`;
+  if (st.auroraColors.length) {
+    html += `<div class="row slider"><label for="tw-auroraOpacity">Aurora opacity</label><span class="val">${st.auroraOpacity.toFixed(2)}</span><input type="range" id="tw-auroraOpacity" data-tweak="auroraOpacity" min="0" max="1" step="0.01" value="${st.auroraOpacity}"></div>
+      <div class="row"><span class="lbl">Aurora colours</span><span class="colors">${st.auroraColors.map((c, i) => colorIn('aurora', `Aurora colour ${i + 1}`, c, i)).join('')}</span></div>`;
+  }
+  html += `<div class="row"><label for="tw-glowOn">Neon edge glow</label><input type="checkbox" class="switch" id="tw-glowOn" data-tweak="glowOn"${st.edgeGlow != null ? ' checked' : ''}></div>`;
+  if (st.edgeGlow != null) html += `<div class="row"><span class="lbl">Glow colour</span><span class="colors">${colorIn('edgeGlow', 'Glow colour', st.edgeGlow)}</span></div>`;
+  html += `<div class="row"><label for="tw-accentOn">Theme accent colour</label><input type="checkbox" class="switch" id="tw-accentOn" data-tweak="accentOn"${st.accent != null ? ' checked' : ''}></div>`;
+  if (st.accent != null) html += `<div class="row"><span class="lbl">Accent</span><span class="colors">${colorIn('accent', 'Theme accent', st.accent)}</span></div>`;
+  html += `<div class="btns"><button type="button" class="btn small" id="resetTheme">Reset ${t.name}</button></div>`;
+  $('tuner').innerHTML = html;
+}
+function setTweak(key, el, type) {
+  const id = settings.theme, st = styleFor(id), tw = tweaks[id] || (tweaks[id] = {});
+  const v = el.type === 'range' ? parseFloat(el.value) : el.type === 'checkbox' ? el.checked : el.value;
+  if (el.type === 'range') { const out = el.parentElement.querySelector('.val'); if (out) out.textContent = v.toFixed(el.step < 1 ? 2 : 0); }
+  switch (key) {
+    case 'backdrop': tw.backdrop = v; break;
+    case 'appearance': tw.appearance = v || null; break;
+    case 'borderStartA': tw.borderStart = { hex: st.borderStart.hex, a: v }; break;
+    case 'borderEndA': tw.borderEnd = { hex: st.borderEnd.hex, a: v }; break;
+    case 'borderStartHex': tw.borderStart = { hex: parseHex(v), a: st.borderStart.a || 0.5 }; break;
+    case 'borderEndHex': tw.borderEnd = { hex: parseHex(v), a: st.borderEnd.a || 0.1 }; break;
+    case 'tintOpacity': tw.tintOpacity = v; if (!st.tintColors.length) tw.tintColors = [0x9AB8FF, 0xC9A6FF]; break;
+    case 'tint': { const list = st.tintColors.length ? [...st.tintColors] : [0x9AB8FF, 0xC9A6FF]; list[+el.dataset.index] = parseHex(v); tw.tintColors = list; break; }
+    case 'auroraOpacity': tw.auroraOpacity = v; break;
+    case 'aurora': { const list = [...st.auroraColors]; list[+el.dataset.index] = parseHex(v); tw.auroraColors = list; break; }
+    case 'glowOn': tw.edgeGlow = v ? (THEMES[id].style.edgeGlow ?? 0x00E5FF) : null; break;
+    case 'edgeGlow': tw.edgeGlow = parseHex(v); break;
+    case 'accentOn': tw.accent = v ? (THEMES[id].style.accent ?? 0x0A84FF) : null; break;
+    case 'accent': tw.accent = parseHex(v); break;
+    default: tw[key] = v;
+  }
+  // Drop tweaks that equal the theme's own values.
+  const base = { ...deep(STYLE_DEFAULTS), ...deep(THEMES[id].style) };
+  for (const k of Object.keys(tw)) if (JSON.stringify(tw[k]) === JSON.stringify(base[k])) delete tw[k];
+  if (!Object.keys(tw).length) delete tweaks[id];
+  configureView();
+  updateGeometry(true);
+  persist();
+  if (type === 'change' && ['glowOn', 'accentOn', 'backdrop'].includes(key)) renderTuner();
+  syncInspector();
+}
+
+// ---------- Changes, Swift and copying ----------
+const SETTING_NAMES = {
+  theme: 'Theme', accent: 'Accent', iconSize: 'Icon size', magnificationEnabled: 'Magnification', magnification: 'Magnification amount',
+  magnificationSpread: 'Magnification reach', position: 'Position', autoHide: 'Automatically hide', revealDelay: 'Reveal delay',
+  showLabels: 'Show app names', showRunningApps: 'Show running apps', showTrash: 'Show the Trash', clickToHide: 'Click hides frontmost app',
+  bounceOnLaunch: 'Bounce on launch', clickRipple: 'Click ripple', reflections: 'Reflections', indicatorStyle: 'Running indicators',
+  dimHiddenApps: 'Dim hidden apps', animationSpeed: 'Animation speed',
+};
+const show = v => typeof v === 'number' ? String(+v.toFixed(3)) : typeof v === 'object' && v ? (v.hex !== undefined ? `${hexStr(v.hex)} @ ${+v.a.toFixed(2)}` : Array.isArray(v) ? v.map(h => hexStr(h)).join(' ') : JSON.stringify(v)) : String(v);
+function changeList() {
+  const out = [];
+  for (const k of Object.keys(DEFAULT_SETTINGS)) if (settings[k] !== DEFAULT_SETTINGS[k]) out.push(`${SETTING_NAMES[k]}: ${show(settings[k])} (app default ${show(DEFAULT_SETTINGS[k])})`);
+  if (pins.join() !== DEFAULT_PINS.join()) out.push(`Dock apps: ${['finder', ...pins].map(id => APPS[id]).join(', ')}`);
+  for (const [id, tw] of Object.entries(tweaks)) {
+    const base = { ...deep(STYLE_DEFAULTS), ...deep(THEMES[id].style) };
+    for (const [k, v] of Object.entries(tw)) out.push(`${THEMES[id].name} theme, ${k}: ${show(v)} (now ${show(base[k])})`);
+  }
+  return out;
+}
+function changesText() {
+  const list = changeList();
+  let s = 'MarDock playground changes\n' + (list.length ? list.map(l => '- ' + l).join('\n') : '- none');
+  for (const id of Object.keys(tweaks)) s += '\n\n' + swiftFor(id);
+  return s;
+}
+function swiftColor(c) {
+  if (c.a === 0) return '.clear';
+  if (c.hex === 0xFFFFFF) return `.white.withAlphaComponent(${+c.a.toFixed(2)})`;
+  return c.a === 1 ? `NSColor(hex: 0x${c.hex.toString(16).padStart(6, '0').toUpperCase()})` : `NSColor(hex: 0x${c.hex.toString(16).padStart(6, '0').toUpperCase()}, alpha: ${+c.a.toFixed(2)})`;
+}
+const swiftHex = h => `NSColor(hex: 0x${h.toString(16).padStart(6, '0').toUpperCase()})`;
+function swiftFor(id) {
+  const st = styleFor(id), d = STYLE_DEFAULTS, lines = [];
+  const backdrop = st.backdrop === 'none' ? '.none' : st.backdrop === 'liquidGlass' ? '.liquidGlass(fallback: .fullScreenUI)' : `.material(.${st.backdrop})`;
+  lines.push(`backdrop: ${backdrop}`);
+  if (st.appearance) lines.push(`appearance: ${st.appearance === 'dark' ? '.darkAqua' : '.aqua'}`);
+  if (st.tintColors.length && st.tintOpacity > 0) { lines.push(`tintColors: [${st.tintColors.map(swiftHex).join(', ')}]`); lines.push(`tintOpacity: ${+st.tintOpacity.toFixed(2)}`); }
+  if (st.auroraColors.length) { lines.push(`auroraColors: [${st.auroraColors.map(swiftHex).join(', ')}]`); lines.push(`auroraOpacity: ${+st.auroraOpacity.toFixed(2)}`); }
+  const num = k => { if (st[k] !== d[k]) lines.push(`${k}: ${+(+st[k]).toFixed(3)}`); };
+  num('innerHighlight');
+  if (JSON.stringify(st.borderStart) !== JSON.stringify(d.borderStart)) lines.push(`borderStart: ${swiftColor(st.borderStart)}`);
+  if (JSON.stringify(st.borderEnd) !== JSON.stringify(d.borderEnd)) lines.push(`borderEnd: ${swiftColor(st.borderEnd)}`);
+  num('borderWidth');
+  if (st.edgeGlow != null) lines.push(`edgeGlow: ${swiftHex(st.edgeGlow)}`);
+  num('specular'); num('shadowOpacity'); num('shadowRadius'); num('cornerFactor');
+  if (st.accent != null) lines.push(`accent: ${swiftHex(st.accent)}`);
+  num('indicatorGlow');
+  if (st.reflections) lines.push('reflections: true');
+  if (st.floor) lines.push('floor: true');
+  num('iconShadow'); num('separatorOpacity');
+  const sw = THEMES[id].swatch;
+  lines.push(`swatch: (${swiftHex(sw[0])}, ${swiftHex(sw[1])})`);
+  return `case .${id}:\n    return ThemeStyle(\n        ${lines.join(',\n        ')}\n    )`;
+}
+async function copy(text, button) {
+  const fallback = $('copyFallback');
+  try {
+    await navigator.clipboard.writeText(text);
+    fallback.hidden = true;
+    const old = button.textContent; button.textContent = 'Copied'; setTimeout(() => { button.textContent = old; }, 1400);
+  } catch {
+    fallback.hidden = false; fallback.value = text; fallback.focus(); fallback.select();
+  }
+}
+
+// =====================================================================
+// Boot
+// =====================================================================
+function start() {
+  buildInspector();
+  renderTuner();
+  win.hidden = !scene.window;
+  tickClock(); setInterval(tickClock, 20000);
+  new ResizeObserver(resizeStage).observe(stage);
+  window.matchMedia?.(`(resolution: ${window.devicePixelRatio || 1}dppx)`).addEventListener?.('change', resizeStage);
+  const r = stage.getBoundingClientRect();
+  view.W = Math.round(r.width); view.H = Math.round(r.height);
+  autoHide.mode = settings.autoHide;
+  configureView();
+  entries = buildEntries();
+  entriesById = new Map(entries.map(e => [e.id, e]));
+  updateGeometry(true);
+  engine.setItems(entries.map(specOf), false);
+  applySettings();
+  resizeStage();
+  if (scene.window) placeWindow(null);
+  syncInspector();
+}
+start();
+
+// For scripted checks: compare against the app's own --demo screenshots.
+window.mardockPlayground = {
+  setSetting, setScene,
+  setMaterial(name, mode, values) { MATERIALS[name][mode] = values; configureView(); render(engine.tick(0)); },
+  simulatePointer(fraction) {
+    engine.setPointer(null);
+    for (let i = 0; i < 120; i++) engine.tick(1 / 60);
+    const f = engine.lastFrame, m = engine.metrics;
+    engine.setPointer({ u: f.shelfStart + (f.shelfEnd - f.shelfStart) * clamp(fraction, 0, 1), v: m.edgeGap + m.shelfThickness / 2 });
+    for (let i = 0; i < 90; i++) render(engine.tick(1 / 60));
+  },
+};
+})();
+</script>
+<!-- artifact:end -->
+</body>
+</html>
