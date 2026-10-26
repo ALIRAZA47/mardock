@@ -182,8 +182,26 @@ struct BehaviorPane: View {
 
             Section("Contents") {
                 Toggle("Show running apps that aren't kept in the dock", isOn: $store.settings.showRunningApps)
+                Toggle("Show recently used apps", isOn: $store.settings.showRecentApps)
+                Stepper(value: $store.settings.recentAppsCount, in: DockSettings.recentAppsRange) {
+                    LabeledContent("Recent apps to show", value: "\(store.settings.recentAppsCount)")
+                }
+                .disabled(!store.settings.showRecentApps)
                 Toggle("Show the Trash", isOn: $store.settings.showTrash)
                 Toggle("Clicking the frontmost app hides it", isOn: $store.settings.clickToHide)
+            }
+
+            Section {
+                Picker("Open the first nine apps with", selection: $store.settings.launchShortcut) {
+                    Text("Off").tag(LaunchShortcut.off)
+                    Text("⌃⌥ 1 – 9").tag(LaunchShortcut.controlOption)
+                    Text("⌥ 1 – 9").tag(LaunchShortcut.option)
+                    Text("⌥⌘ 1 – 9").tag(LaunchShortcut.commandOption)
+                }
+            } header: {
+                Text("Keyboard")
+            } footer: {
+                FooterText("1 is Finder, then your apps in the order they're in the dock. No permission is needed: macOS tells MarDock about these key combinations only. With ⌥ alone, those keys stop typing characters such as ¡ and ™ in other apps.")
             }
 
             Section {
@@ -221,21 +239,19 @@ struct AppsPane: View {
     var body: some View {
         Form {
             Section {
-                AppRow(name: "Finder", path: "Always first", icon: icon(forBundle: DockIdentity.finderBundleIdentifier), removable: false) {}
-                ForEach(pins.pins) { pin in
-                    AppRow(name: pin.name, path: pin.path, icon: NSWorkspace.shared.icon(forFile: pin.path), removable: true) {
-                        withAnimation { pins.unpin(pin.id) }
-                    }
+                AppRow(name: "Finder", detail: "Always first", id: DockIdentity.finder, original: icon(forBundle: DockIdentity.finderBundleIdentifier), remove: nil)
+                ForEach(pins.items) { item in
+                    row(for: item)
                 }
                 .onMove { from, to in
-                    var list = pins.pins
+                    var list = pins.items
                     list.move(fromOffsets: from, toOffset: to)
-                    pins.setPins(list)
+                    pins.setItems(list)
                 }
             } header: {
-                Text("Kept in the dock")
+                Text("In the dock")
             } footer: {
-                FooterText("Drag rows to reorder. You can also drag apps from Finder onto the dock, drag icons along the dock, or drag one off to remove it.")
+                FooterText("Drag rows to reorder. Drop an image on an app's icon (or click it) to change how that app looks in MarDock. On the dock itself you can drag apps in from Finder, drag tiles along, or drag one off to remove it.")
             }
 
             Section {
@@ -245,6 +261,15 @@ struct AppsPane: View {
                     } label: {
                         Label("Add Apps…", systemImage: "plus")
                     }
+                    Menu {
+                        Button("Spacer") { withAnimation { pins.insert(.newSpacer()) } }
+                        Button("Divider") { withAnimation { pins.insert(.newDivider()) } }
+                        Button("Share Tile") { withAnimation { pins.insert(.share) } }
+                            .disabled(pins.contains(DockIdentity.share))
+                    } label: {
+                        Label("Add", systemImage: "rectangle.dashed")
+                    }
+                    .fixedSize()
                     Button {
                         Task {
                             let count = await coordinator.importFromSystemDock()
@@ -258,9 +283,33 @@ struct AppsPane: View {
                 if let importMessage {
                     Text(importMessage).font(.callout).foregroundStyle(.secondary)
                 }
+            } footer: {
+                FooterText("Spacers leave a gap, dividers draw a line with an optional name that shows when you point at it, and the Share tile sends files you drop on it to AirDrop, Mail or Messages.")
             }
         }
         .formStyle(.grouped)
+    }
+
+    @ViewBuilder
+    private func row(for item: DockItem) -> some View {
+        switch item {
+        case let .app(pin):
+            AppRow(name: pin.name, detail: pin.path, id: pin.id, original: NSWorkspace.shared.icon(forFile: pin.path)) {
+                withAnimation { pins.remove(pin.id) }
+            }
+        case .spacer:
+            ItemRow(symbol: "rectangle.dashed", title: "Spacer", detail: "An empty space between apps") {
+                withAnimation { pins.remove(item.id) }
+            }
+        case let .divider(id, title):
+            DividerRow(title: title, rename: { pins.rename(id, to: $0) }) {
+                withAnimation { pins.remove(id) }
+            }
+        case .share:
+            ItemRow(symbol: "square.and.arrow.up", title: "Share", detail: "Drop files on it for AirDrop, Mail or Messages") {
+                withAnimation { pins.remove(item.id) }
+            }
+        }
     }
 
     private func icon(forBundle identifier: String) -> NSImage {
@@ -289,37 +338,147 @@ struct AppsPane: View {
 
 private struct AppRow: View {
     let name: String
-    let path: String
-    let icon: NSImage
-    let removable: Bool
-    let remove: () -> Void
+    let detail: String
+    let id: String
+    let original: NSImage
+    let remove: (() -> Void)?
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(nsImage: icon)
-                .resizable()
-                .interpolation(.high)
-                .frame(width: 30, height: 30)
+            IconWell(id: id, name: name, original: original)
             VStack(alignment: .leading, spacing: 1) {
                 Text(name)
-                Text(path)
+                Text(detail)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
             Spacer()
-            if removable {
-                Button(action: remove) {
-                    Image(systemName: "minus.circle.fill")
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(.red)
-                }
-                .buttonStyle(.borderless)
-                .help("Remove from dock")
-                .accessibilityLabel(Text("Remove \(name)"))
+            if let remove {
+                RemoveButton(name: name, action: remove)
             }
         }
+    }
+}
+
+/// An app's icon in Settings. Drop an image on it, or click it, to show that
+/// image for the app in MarDock.
+private struct IconWell: View {
+    @EnvironmentObject private var customIcons: CustomIconStore
+    let id: String
+    let name: String
+    let original: NSImage
+    @State private var targeted = false
+
+    var body: some View {
+        Image(nsImage: customIcons.icon(for: id) ?? original)
+            .resizable()
+            .interpolation(.high)
+            .frame(width: 30, height: 30)
+            .padding(2)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(Color.accentColor, lineWidth: targeted ? 2 : 0)
+            )
+            .contentShape(Rectangle())
+            .onTapGesture { choose() }
+            .dropDestination(for: URL.self) { urls, _ in
+                guard let url = urls.first else { return false }
+                return (try? customIcons.setIcon(contentsOf: url, for: id)) != nil
+            } isTargeted: { targeted = $0 }
+            .contextMenu {
+                Button("Choose Icon…") { choose() }
+                if customIcons.hasIcon(for: id) {
+                    Button("Use Original Icon") { customIcons.removeIcon(for: id) }
+                }
+            }
+            .help("Drop an image here, or click, to change \(name)'s icon in MarDock")
+            .accessibilityLabel(Text("\(name) icon"))
+            .accessibilityHint(Text("Choose an image to show for \(name) in MarDock"))
+    }
+
+    private func choose() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.image]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.prompt = "Use as Icon"
+        panel.message = "Choose an image to show for \(name) in MarDock."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try customIcons.setIcon(contentsOf: url, for: id)
+        } catch {
+            NSSound.beep()
+        }
+    }
+}
+
+/// A spacer or the Share tile in the list.
+private struct ItemRow: View {
+    let symbol: String
+    let title: String
+    let detail: String
+    let remove: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: symbol)
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 34, height: 34)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            RemoveButton(name: title, action: remove)
+        }
+    }
+}
+
+/// A divider, named in place.
+private struct DividerRow: View {
+    let title: String
+    let rename: (String) -> Void
+    let remove: () -> Void
+    @State private var draft = ""
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "rectangle.split.2x1")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 34, height: 34)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Divider")
+                TextField("Name (optional)", text: $draft)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: 220)
+                    .onChange(of: draft) { rename(draft) }
+            }
+            Spacer()
+            RemoveButton(name: "divider", action: remove)
+        }
+        .onAppear { draft = title }
+    }
+}
+
+private struct RemoveButton: View {
+    let name: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "minus.circle.fill")
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(.red)
+        }
+        .buttonStyle(.borderless)
+        .help("Remove from dock")
+        .accessibilityLabel(Text("Remove \(name)"))
     }
 }
 
@@ -561,7 +720,7 @@ struct PrivacyPane: View {
             }
 
             Section("Your data") {
-                Text("Your settings and the list of apps in your dock are stored only on this Mac, inside MarDock’s sandbox container. No analytics, no crash reporting, no update checks, no accounts.")
+                Text("Your settings, what you keep in your dock, the recent apps list and any icons you pick are stored only on this Mac, inside MarDock’s sandbox container. No analytics, no crash reporting, no update checks, no accounts.")
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }

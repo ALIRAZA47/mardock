@@ -72,6 +72,24 @@ enum SelfTest {
         check("window-list", windows > 0, "\(windows) windows")
         check("default-pins", !PinStore.defaultPins().isEmpty, "\(PinStore.defaultPins().count) apps")
 
+        // Keyboard launching: hot keys register without any permission.
+        let shortcuts = LaunchShortcuts()
+        shortcuts.update(.controlOption)
+        check("launch-shortcuts", shortcuts.registeredCount == 9, "\(shortcuts.registeredCount) of 9")
+        shortcuts.update(.off)
+
+        // Custom icons are stored in, and read back from, the container.
+        let iconID = DockIdentity.app("io.github.aliraza47.mardock.selftest")
+        let iconStore = CustomIconStore()
+        do {
+            try iconStore.setIcon(IconProvider.shareIcon, for: iconID)
+            check("custom-icon", CustomIconStore().icon(for: iconID) != nil)
+        } catch {
+            check("custom-icon", false, error.localizedDescription)
+        }
+        iconStore.removeIcon(for: iconID)
+        check("custom-icon-removed", !CustomIconStore().hasIcon(for: iconID))
+
         // 4. The helper.
         do {
             let info = try await agent.hello()

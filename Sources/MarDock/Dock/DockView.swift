@@ -503,8 +503,17 @@ final class DockView: NSView {
                 tiles[item.id] = tile
             }
 
-            if item.kind == .separator {
+            if item.kind.isNarrow {
                 layoutSeparator(tile, item: item, frame: frame, axis: axis)
+                continue
+            }
+            if item.kind == .spacer {
+                // An empty slot: nothing to draw.
+                tile.icon.isHidden = true
+                tile.line.isHidden = true
+                tile.reflection.isHidden = true
+                tile.indicator.opacity = 0
+                tile.glow.opacity = 0
                 continue
             }
             tile.line.isHidden = true

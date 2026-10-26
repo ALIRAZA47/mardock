@@ -328,8 +328,10 @@ public final class DockEngine {
                 items[i].hover.target = items[i].spec.id == id ? 1 : 0
             }
         }
-        if let id { labelID = id }
-        labelAlpha.target = (id != nil && draggedID == nil && labelsEnabled) ? 1 : 0
+        // Spacers (and untitled dividers) have no name to show.
+        let labelled = id.flatMap { id in items.first { $0.spec.id == id && !$0.removing } }?.spec.hasLabel ?? false
+        if labelled, let id { labelID = id }
+        labelAlpha.target = (labelled && draggedID == nil && labelsEnabled) ? 1 : 0
     }
 
     private func layout() -> DockFrame {
@@ -349,7 +351,7 @@ public final class DockEngine {
                 appendGaps(at: live)
                 live += 1
             }
-            let base = item.spec.kind == .separator ? m.separatorWidth : m.slot
+            let base = item.spec.kind.isNarrow ? m.separatorWidth : m.slot
             slots.append((base * max(0, item.presence.value), i))
         }
         appendGaps(at: live)

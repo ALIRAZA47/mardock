@@ -55,6 +55,18 @@ final class SettingsTests: XCTestCase {
         XCTAssertEqual(settings.position, .bottom)
     }
 
+    func testNewSettingsDefaultsAndClamping() {
+        let s = DockSettings()
+        XCTAssertEqual(s.launchShortcut, .controlOption)
+        XCTAssertTrue(s.showRecentApps)
+        XCTAssertEqual(s.recentAppsCount, 3)
+        let decoded = DockSettings.decode(Data(#"{"launchShortcut":"hyper","recentAppsCount":500,"showRecentApps":false}"#.utf8))
+        XCTAssertEqual(decoded.launchShortcut, .controlOption)
+        XCTAssertEqual(decoded.recentAppsCount, DockSettings.recentAppsRange.upperBound)
+        XCTAssertFalse(decoded.showRecentApps)
+        XCTAssertEqual(DockSettings.decode(Data(#"{"recentAppsCount":-2}"#.utf8)).recentAppsCount, 1)
+    }
+
     func testOutOfRangeValuesAreClamped() {
         let json = #"{"iconSize":100000,"magnification":-4,"magnificationSpread":0,"revealDelay":99,"animationSpeed":0}"#
         let s = DockSettings.decode(Data(json.utf8))
@@ -161,11 +173,130 @@ final class ContentBuilderTests: XCTestCase {
         XCTAssertEqual(entries.map(\.id), [DockIdentity.finder])
     }
 
+    func testUserItemsKeepTheirOrderAndKinds() {
+        let safari = PinnedApp(bundleIdentifier: "com.apple.Safari", path: "/Applications/Safari.app", name: "Safari")!
+        let spacer = DockItem.newSpacer()
+        let divider = DockItem.newDivider(title: "Work")
+        let entries = DockContentBuilder.build(items: [divider, .app(safari), spacer, .share], running: [], showTrash: false)
+        XCTAssertEqual(entries.map(\.id), [DockIdentity.finder, divider.id, safari.id, spacer.id, DockIdentity.share])
+        XCTAssertEqual(entries[1].spec.kind, .divider)
+        XCTAssertTrue(entries[1].spec.hasLabel)
+        XCTAssertEqual(entries[3].spec.kind, .spacer)
+        XCTAssertFalse(entries[3].spec.hasLabel)
+        XCTAssertEqual(entries[4].spec.kind, .app)
+        XCTAssertTrue(entries.dropFirst().allSatisfy(\.isKept))
+        XCTAssertFalse(DockContentBuilder.build(items: [.newDivider()], running: [])[1].spec.hasLabel)
+    }
+
+    func testRecentAppsFollowRunningOnesAndSkipKeptOrRunningApps() {
+        let notes = PinnedApp(bundleIdentifier: "com.apple.Notes", path: "/System/Applications/Notes.app", name: "Notes")!
+        let maps = PinnedApp(bundleIdentifier: "com.apple.Maps", path: "/System/Applications/Maps.app", name: "Maps")!
+        let books = PinnedApp(bundleIdentifier: "com.apple.iBooksX", path: "/System/Applications/Books.app", name: "Books")!
+        let terminal = PinnedApp(bundleIdentifier: "com.apple.Terminal", path: "/System/Applications/Utilities/Terminal.app", name: "Terminal")!
+        let entries = DockContentBuilder.build(
+            items: [.app(notes)],
+            running: [running("com.apple.Terminal", order: 0)],
+            recents: [notes, terminal, maps, books],
+            recentLimit: 1,
+            showTrash: false
+        )
+        XCTAssertEqual(entries.map(\.id), [DockIdentity.finder, notes.id, DockIdentity.runningSeparator, terminal.id, maps.id])
+        XCTAssertTrue(entries[4].isRecent)
+        XCTAssertEqual(entries[4].app, maps)
+        XCTAssertFalse(entries[4].spec.isRunning)
+
+        let none = DockContentBuilder.build(items: [], running: [], recents: [maps], recentLimit: 0, showTrash: false)
+        XCTAssertEqual(none.map(\.id), [DockIdentity.finder])
+        let onlyRecents = DockContentBuilder.build(items: [], running: [], recents: [maps], recentLimit: 3, showTrash: false)
+        XCTAssertEqual(onlyRecents.map(\.id), [DockIdentity.finder, DockIdentity.runningSeparator, maps.id])
+    }
+
+    func testShortcutTargetsAreTheFirstNineApps() {
+        let apps = (0..<12).map { PinnedApp(bundleIdentifier: "com.example.a\($0)", path: "/Applications/A\($0).app", name: "A\($0)")! }
+        var items = apps.map(DockItem.app)
+        items.insert(.newSpacer(), at: 2)
+        items.insert(.share, at: 4)
+        let targets = DockContentBuilder.build(items: items, running: []).shortcutTargets
+        XCTAssertEqual(targets.count, 9)
+        XCTAssertEqual(targets.first?.id, DockIdentity.finder)
+        XCTAssertEqual(targets.last?.id, apps[7].id)
+    }
+
     func testLaunchingFlagReachesTheSpec() {
         let pin = PinnedApp(bundleIdentifier: "com.apple.Maps", path: "/System/Applications/Maps.app", name: "Maps")!
         let entries = DockContentBuilder.build(pins: [pin], running: [], launching: [pin.id])
         XCTAssertTrue(entries[1].spec.isLaunching)
         XCTAssertFalse(entries[1].spec.isRunning)
+    }
+}
+
+final class DockItemTests: XCTestCase {
+    private let safari = PinnedApp(bundleIdentifier: "com.apple.Safari", path: "/Applications/Safari.app", name: "Safari")!
+
+    func testRoundTripKeepsEveryKind() throws {
+        let items: [DockItem] = [.app(safari), .newSpacer(), .newDivider(title: "Work"), .share]
+        let decoded = try XCTUnwrap(DockItem.decodeList(DockItem.encodeList(items)))
+        XCTAssertEqual(decoded, items)
+        XCTAssertEqual(decoded.map(\.app), [safari, nil, nil, nil])
+    }
+
+    func testDecodingDropsBadDuplicateAndUnknownEntries() throws {
+        let json = """
+        [
+          {"type":"app","app":{"bundleIdentifier":"com.apple.Safari","path":"/Applications/Safari.app","name":"Safari"}},
+          {"type":"app","app":{"bundleIdentifier":"evil;rm","path":"/Applications/X.app"}},
+          {"type":"spacer","id":"spacer:ab12"},
+          {"type":"spacer","id":"spacer:ab12"},
+          {"type":"spacer","id":"spacer:../../etc"},
+          {"type":"divider","id":"divider:x1","title":"  Games\\u0007 "},
+          {"type":"divider","id":"nope:x1","title":"Bad"},
+          {"type":"share"},
+          {"type":"share"},
+          {"type":"rocket"}
+        ]
+        """
+        let items = try XCTUnwrap(DockItem.decodeList(Data(json.utf8)))
+        XCTAssertEqual(items, [.app(safari), .spacer(id: "spacer:ab12"), .divider(id: "divider:x1", title: "Games"), .share])
+    }
+
+    func testOldPinListsDecodeAsApps() throws {
+        // `pins.v1` held bare apps; the store migrates them by wrapping each one.
+        let old = try XCTUnwrap(PinnedApp.decodeList(PinnedApp.encodeList([safari])))
+        XCTAssertEqual(old.map(DockItem.app), [.app(safari)])
+        XCTAssertNil(DockItem.decodeList(PinnedApp.encodeList([safari])).flatMap { $0.isEmpty ? nil : $0 })
+    }
+
+    func testNewTilesGetValidUniqueIDs() {
+        let a = DockItem.newSpacer().id, b = DockItem.newSpacer().id
+        XCTAssertNotEqual(a, b)
+        XCTAssertTrue(DockIdentity.isValidTileID(a, kind: .spacer))
+        XCTAssertTrue(DockIdentity.isValidTileID(DockItem.newDivider().id, kind: .divider))
+        XCTAssertFalse(DockIdentity.isValidTileID("spacer:", kind: .spacer))
+        XCTAssertFalse(DockIdentity.isValidTileID("divider:a b", kind: .divider))
+        XCTAssertFalse(DockIdentity.isValidTileID(a, kind: .divider))
+    }
+}
+
+final class RecentAppsTests: XCTestCase {
+    private func app(_ name: String) -> PinnedApp {
+        PinnedApp(bundleIdentifier: "com.example." + name, path: "/Applications/\(name).app", name: name)!
+    }
+
+    func testMostRecentFirstWithoutDuplicates() {
+        var recents = RecentApps()
+        recents.note(app("A"))
+        recents.note(app("B"))
+        recents.note(app("A"))
+        XCTAssertEqual(recents.apps.map(\.name), ["A", "B"])
+        recents.remove(app("A").id)
+        XCTAssertEqual(recents.apps.map(\.name), ["B"])
+    }
+
+    func testCapacity() {
+        var recents = RecentApps()
+        for i in 0..<30 { recents.note(app("App\(i)")) }
+        XCTAssertEqual(recents.apps.count, RecentApps.capacity)
+        XCTAssertEqual(recents.apps.first?.name, "App29")
     }
 }
 

@@ -21,18 +21,20 @@ final class AppActions {
         switch entry.kind {
         case .finder:
             return NSWorkspace.shared.urlForApplication(withBundleIdentifier: DockIdentity.finderBundleIdentifier)
-        case let .pinned(pin):
+        case let .pinned(pin), let .recent(pin):
             if FileManager.default.fileExists(atPath: pin.path) {
                 return URL(fileURLWithPath: pin.path, isDirectory: true)
             }
             if let moved = NSWorkspace.shared.urlForApplication(withBundleIdentifier: pin.bundleIdentifier) {
-                pins.updatePath(of: pin.id, to: moved.path)
+                if entry.isPinned {
+                    pins.updatePath(of: pin.id, to: moved.path)
+                }
                 return moved
             }
             return nil
         case .running:
             return nil
-        case .separator, .trash:
+        case .separator, .trash, .spacer, .divider, .share:
             return nil
         }
     }

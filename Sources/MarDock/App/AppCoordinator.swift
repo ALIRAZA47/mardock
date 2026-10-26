@@ -8,8 +8,11 @@ import SwiftUI
 final class AppCoordinator: NSObject, ObservableObject {
     let settings = SettingsStore()
     let pins = PinStore()
+    let recents = RecentAppsStore()
+    let customIcons = CustomIconStore()
     let running = RunningAppsMonitor()
     let icons = IconProvider()
+    let shortcuts = LaunchShortcuts()
     let agent = AgentClient()
     let loginItem = LoginItemManager()
     let systemDock: SystemDockManager
@@ -27,15 +30,27 @@ final class AppCoordinator: NSObject, ObservableObject {
     override init() {
         systemDock = SystemDockManager(agent: agent)
         actions = AppActions(agent: agent, pins: pins)
-        dock = DockController(settings: settings, pins: pins, running: running, icons: icons, actions: actions, systemDock: systemDock)
+        dock = DockController(
+            settings: settings, pins: pins, recents: recents, customIcons: customIcons,
+            running: running, icons: icons, actions: actions, systemDock: systemDock
+        )
         security = SecurityStatus(agent: agent)
         super.init()
+        icons.customIcons = customIcons
         dock.coordinator = self
     }
 
     func start() {
         running.start()
+        recents.start()
         dock.start()
+        shortcuts.onPress = { [weak self] index in self?.dock.openShortcutTarget(index) }
+        settings.$settings
+            .map(\.launchShortcut)
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] shortcut in self?.shortcuts.update(shortcut) }
+            .store(in: &cancellables)
         statusItem = StatusItemController(coordinator: self)
         installMainMenu()
 
@@ -167,6 +182,7 @@ final class AppCoordinator: NSObject, ObservableObject {
                 .environmentObject(self)
                 .environmentObject(settings)
                 .environmentObject(pins)
+                .environmentObject(customIcons)
                 .environmentObject(systemDock)
                 .environmentObject(loginItem)
                 .environmentObject(security)

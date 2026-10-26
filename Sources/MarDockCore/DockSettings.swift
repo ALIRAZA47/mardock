@@ -73,6 +73,26 @@ public enum AccentChoice: String, Codable, CaseIterable, Sendable, Identifiable 
     public var id: String { rawValue }
 }
 
+/// The modifier keys that, with 1–9, open the dock's first nine apps.
+public enum LaunchShortcut: String, Codable, CaseIterable, Sendable, Identifiable {
+    case off
+    case controlOption
+    case option
+    case commandOption
+
+    public var id: String { rawValue }
+
+    /// How menus write the modifiers, e.g. "⌃⌥".
+    public var symbols: String {
+        switch self {
+        case .off: return ""
+        case .controlOption: return "⌃⌥"
+        case .option: return "⌥"
+        case .commandOption: return "⌥⌘"
+        }
+    }
+}
+
 /// Every user preference. Decoding never fails: unknown or missing keys fall
 /// back to defaults and every number is clamped to its allowed range, so a
 /// damaged or tampered preferences file can't put the app in a bad state.
@@ -100,12 +120,16 @@ public struct DockSettings: Codable, Equatable, Sendable {
     public var hideSystemDock = false
     public var restoreSystemDockOnQuit = true
     public var showInFullScreen = false
+    public var launchShortcut: LaunchShortcut = .controlOption
+    public var showRecentApps = true
+    public var recentAppsCount = 3
 
     public static let iconSizeRange: ClosedRange<Double> = 32...112
     public static let magnificationRange: ClosedRange<Double> = 1.1...2.6
     public static let spreadRange: ClosedRange<Double> = 1.5...6
     public static let revealDelayRange: ClosedRange<Double> = 0...1.5
     public static let animationSpeedRange: ClosedRange<Double> = 0.5...2
+    public static let recentAppsRange: ClosedRange<Int> = 1...10
 
     public init() {}
 
@@ -118,6 +142,7 @@ public struct DockSettings: Codable, Equatable, Sendable {
         s.magnificationSpread = Self.clamp(magnificationSpread, Self.spreadRange, fallback: d.magnificationSpread)
         s.revealDelay = Self.clamp(revealDelay, Self.revealDelayRange, fallback: d.revealDelay)
         s.animationSpeed = Self.clamp(animationSpeed, Self.animationSpeedRange, fallback: d.animationSpeed)
+        s.recentAppsCount = min(max(recentAppsCount, Self.recentAppsRange.lowerBound), Self.recentAppsRange.upperBound)
         return s
     }
 
@@ -135,6 +160,7 @@ public struct DockSettings: Codable, Equatable, Sendable {
         case position, display, autoHide, revealDelay, showLabels, showRunningApps, showTrash
         case clickToHide, bounceOnLaunch, clickRipple, reflections, indicatorStyle, dimHiddenApps
         case animationSpeed, hideSystemDock, restoreSystemDockOnQuit, showInFullScreen
+        case launchShortcut, showRecentApps, recentAppsCount
     }
 
     public init(from decoder: Decoder) throws {
@@ -166,6 +192,9 @@ public struct DockSettings: Codable, Equatable, Sendable {
         s.hideSystemDock = value(.hideSystemDock, s.hideSystemDock)
         s.restoreSystemDockOnQuit = value(.restoreSystemDockOnQuit, s.restoreSystemDockOnQuit)
         s.showInFullScreen = value(.showInFullScreen, s.showInFullScreen)
+        s.launchShortcut = value(.launchShortcut, s.launchShortcut)
+        s.showRecentApps = value(.showRecentApps, s.showRecentApps)
+        s.recentAppsCount = value(.recentAppsCount, s.recentAppsCount)
         self = s.sanitized()
     }
 

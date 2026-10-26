@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import MarDockCore
+import UniformTypeIdentifiers
 
 /// Owns the dock window and wires everything together: settings and app
 /// state flow into the engine, the engine's frames flow into the view, and
@@ -15,6 +16,8 @@ final class DockController: NSObject {
 
     private let settings: SettingsStore
     private let pins: PinStore
+    private let recents: RecentAppsStore
+    private let customIcons: CustomIconStore
     private let running: RunningAppsMonitor
     private let icons: IconProvider
     private let actions: AppActions
@@ -37,6 +40,7 @@ final class DockController: NSObject {
     private var dragDropHandled = false
     private var externalDropActive = false
     private var menuIsOpen = false
+    private var sharePickerOpen = false
     private var pointerAtEdge = false
     private var pointerInDock = false
     private var windowOverlaps = false
@@ -45,9 +49,14 @@ final class DockController: NSObject {
     private var followCandidate: (display: CGDirectDisplayID, since: TimeInterval)?
     private var followTimer: Timer?
 
-    init(settings: SettingsStore, pins: PinStore, running: RunningAppsMonitor, icons: IconProvider, actions: AppActions, systemDock: SystemDockManager) {
+    init(
+        settings: SettingsStore, pins: PinStore, recents: RecentAppsStore, customIcons: CustomIconStore,
+        running: RunningAppsMonitor, icons: IconProvider, actions: AppActions, systemDock: SystemDockManager
+    ) {
         self.settings = settings
         self.pins = pins
+        self.recents = recents
+        self.customIcons = customIcons
         self.running = running
         self.icons = icons
         self.actions = actions
@@ -70,14 +79,25 @@ final class DockController: NSObject {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.applySettings() }
             .store(in: &cancellables)
-        Publishers.Merge3(
-            pins.$pins.map { _ in () },
+        Publishers.Merge4(
+            pins.$items.map { _ in () },
+            recents.$recents.map { _ in () },
             running.$snapshots.map { _ in () },
             running.$launching.map { _ in () }
         )
         .receive(on: RunLoop.main)
         .sink { [weak self] in self?.rebuild(animated: true) }
         .store(in: &cancellables)
+        customIcons.$revision
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                self.icons.invalidate()
+                self.dockView.reloadImages()
+                self.renderNow()
+            }
+            .store(in: &cancellables)
 
         listen(NotificationCenter.default, NSApplication.didChangeScreenParametersNotification) { controller in
             controller.updateGeometry(force: true)
@@ -163,7 +183,7 @@ final class DockController: NSObject {
             let visible = target.visibleFrame
             available = Double(s.position.isVertical ? visible.height : target.frame.width) - 24
         }
-        let separators = entries.filter { $0.kind == .separator }.count
+        let separators = entries.filter { $0.spec.kind.isNarrow }.count
         let metrics = DockMetrics.fitting(s, tallFloor: floor, tiles: entries.count - separators, separators: separators, available: available)
         guard force || metrics != engine.metrics else { return }
         engine.setMetrics(metrics)
@@ -224,10 +244,12 @@ final class DockController: NSObject {
     func rebuild(animated: Bool) {
         let s = settings.settings
         let built = DockContentBuilder.build(
-            pins: pins.pins,
+            items: pins.items,
             running: running.snapshots,
+            recents: recents.recents.apps,
             launching: running.launching,
             showRunningApps: s.showRunningApps,
+            recentLimit: s.showRecentApps ? s.recentAppsCount : 0,
             showTrash: s.showTrash
         )
         entries = built
@@ -235,7 +257,7 @@ final class DockController: NSObject {
         updateGeometry()
         engine.setItems(built.map(\.spec), animated: animated)
         icons.retain(only: Set(built.map(\.id)))
-        dockView.updateAccessibility(items: built.filter { $0.kind != .separator }.map { ($0.id, name(for: $0.id)) })
+        dockView.updateAccessibility(items: built.filter(\.spec.hasLabel).map { ($0.id, name(for: $0.id)) })
         kick()
     }
 
@@ -244,9 +266,12 @@ final class DockController: NSObject {
         switch entry.kind {
         case .finder: return "Finder"
         case let .pinned(pin): return entry.running?.name ?? pin.name
+        case let .recent(app): return app.name
         case .running: return entry.running?.name ?? "App"
         case .trash: return "Trash"
-        case .separator: return ""
+        case .share: return "Share"
+        case let .divider(title): return title
+        case .separator, .spacer: return ""
         }
     }
 
@@ -350,7 +375,7 @@ final class DockController: NSObject {
     // MARK: - Auto-hide
 
     private var holdOpen: Bool {
-        menuIsOpen || pressed != nil || dragSourceID != nil || externalDropActive
+        menuIsOpen || sharePickerOpen || pressed != nil || dragSourceID != nil || externalDropActive
     }
 
     private func reevaluateAutoHide() {
@@ -421,11 +446,17 @@ final class DockController: NSObject {
 
     func activate(_ entry: DockEntry, modifiers: NSEvent.ModifierFlags) {
         switch entry.kind {
-        case .separator:
+        case .separator, .spacer, .divider:
             return
         case .trash:
             ripple(entry.id)
             actions.openTrash()
+            return
+        case .share:
+            // There's nothing to share yet; say what the tile is for.
+            if let rect = dockView.iconRect(for: entry.id) {
+                showMenu(DockMenus.menu(for: entry, controller: self), at: NSPoint(x: rect.midX, y: rect.midY))
+            }
             return
         default:
             break
@@ -477,9 +508,79 @@ final class DockController: NSObject {
         actions.setHidden(app, hidden)
     }
 
+    /// ⌃⌥1 to ⌃⌥9: does what clicking the n-th app does.
+    func openShortcutTarget(_ index: Int) {
+        let targets = entries.shortcutTargets
+        guard targets.indices.contains(index) else {
+            NSSound.beep()
+            return
+        }
+        activate(targets[index], modifiers: [])
+    }
+
+    /// Takes a tile out of the dock (or out of the recent apps).
     func unpin(_ entry: DockEntry) {
-        pins.unpin(entry.id)
+        if entry.isRecent {
+            recents.remove(entry.id)
+        } else {
+            pins.remove(entry.id)
+        }
         rebuild(animated: true)
+    }
+
+    /// Adds a spacer, divider or the Share tile where the dock was clicked
+    /// (or at the end of the user's items).
+    func addItem(_ item: DockItem, atU u: Double?) {
+        pins.insert(item, at: u.map { pinInsertionIndex(forU: $0, excluding: nil) })
+        rebuild(animated: true)
+        if case .divider = item, let entry = entriesByID[item.id] {
+            renameDivider(entry)
+        }
+    }
+
+    var hasShareTile: Bool { pins.contains(DockIdentity.share) }
+
+    func renameDivider(_ entry: DockEntry) {
+        guard case let .divider(title) = entry.kind else { return }
+        let alert = NSAlert()
+        alert.messageText = title.isEmpty ? "Name this divider" : "Rename this divider"
+        alert.informativeText = "The name shows when you point at the divider. Leave it empty for a plain line."
+        let field = NSTextField(string: title)
+        field.placeholderString = "Work, Games, Writing…"
+        field.frame = NSRect(x: 0, y: 0, width: 260, height: 24)
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = field
+        NSApp.activate()
+        if alert.runModal() == .alertFirstButtonReturn {
+            pins.rename(entry.id, to: field.stringValue)
+        }
+    }
+
+    func hasCustomIcon(_ entry: DockEntry) -> Bool {
+        customIcons.hasIcon(for: entry.id)
+    }
+
+    /// Lets the user pick an image to show instead of the app's own icon.
+    func chooseIcon(for entry: DockEntry) {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.image]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.prompt = "Use as Icon"
+        panel.message = "Choose an image to show for \(name(for: entry.id)) in MarDock."
+        NSApp.activate()
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try customIcons.setIcon(contentsOf: url, for: entry.id)
+        } catch {
+            NSSound.beep()
+        }
+    }
+
+    func resetIcon(for entry: DockEntry) {
+        customIcons.removeIcon(for: entry.id)
     }
 
     func keepInDock(_ entry: DockEntry) {
@@ -490,7 +591,7 @@ final class DockController: NSObject {
 
     func pinnable(_ entry: DockEntry) -> PinnedApp? {
         switch entry.kind {
-        case let .pinned(pin):
+        case let .pinned(pin), let .recent(pin):
             return pin
         case .running:
             guard let app = running.runningApp(for: entry.id), let identifier = app.bundleIdentifier, let url = app.bundleURL else { return nil }
@@ -500,8 +601,44 @@ final class DockController: NSObject {
         }
     }
 
+    /// What to store when a tile is dropped among the user's items.
+    private func keptItem(for entry: DockEntry) -> DockItem? {
+        switch entry.kind {
+        case .spacer: return .spacer(id: entry.id)
+        case let .divider(title): return .divider(id: entry.id, title: title)
+        case .share: return .share
+        default: return pinnable(entry).map(DockItem.app)
+        }
+    }
+
     func runningApp(for entry: DockEntry) -> NSRunningApplication? {
         running.runningApp(for: entry.id)
+    }
+
+    // MARK: - Sharing
+
+    /// Files dropped on the Share tile go to the system share sheet.
+    private func share(_ urls: [URL], fromTile id: String) {
+        ripple(id)
+        // Present once the drop has finished.
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, let rect = self.dockView.iconRect(for: id) else { return }
+                let picker = NSSharingServicePicker(items: urls)
+                picker.delegate = self
+                self.sharePickerOpen = true
+                self.reevaluateAutoHide()
+                picker.show(relativeTo: rect, of: self.dockView, preferredEdge: self.edgeFacingScreen)
+            }
+        }
+    }
+
+    private var edgeFacingScreen: NSRectEdge {
+        switch settings.settings.position {
+        case .bottom: return .maxY
+        case .left: return .maxX
+        case .right: return .minX
+        }
     }
 
     // MARK: - Menus
@@ -524,15 +661,15 @@ final class DockController: NSObject {
         return (pasteboard.readObjects(forClasses: [NSURL.self], options: options) as? [URL]) ?? []
     }
 
-    /// Index among pinned apps (excluding `excluded`) where a drop at `u` lands.
+    /// Index among the user's items (excluding `excluded`) where a drop at `u` lands.
     private func pinInsertionIndex(forU u: Double, excluding excluded: String?) -> Int {
-        let pinned = entries.filter { $0.isPinned && $0.id != excluded }.map(\.id)
-        return engine.lastFrame.insertionIndex(u: u, among: pinned)
+        let kept = entries.filter { $0.isKept && $0.id != excluded }.map(\.id)
+        return engine.lastFrame.insertionIndex(u: u, among: kept)
     }
 
     /// Index among all tiles where the drop gap should open.
     private func gapIndex(forU u: Double, excluding excluded: String?) -> Int {
-        let pinned = entries.filter { $0.isPinned && $0.id != excluded }
+        let pinned = entries.filter { $0.isKept && $0.id != excluded }
         let k = engine.lastFrame.insertionIndex(u: u, among: pinned.map(\.id))
         if k < pinned.count, let index = entries.firstIndex(where: { $0.id == pinned[k].id }) {
             return index
@@ -550,7 +687,7 @@ final class DockController: NSObject {
 
     private func canRemove(_ id: String?) -> Bool {
         guard let id, let entry = entriesByID[id] else { return false }
-        return entry.isPinned
+        return entry.isKept || entry.isRecent
     }
 }
 
@@ -597,7 +734,7 @@ extension DockController: DockViewDelegate {
         if let item = engine.lastFrame.item(atU: p.u, v: p.v), let entry = entriesByID[item.id] {
             menu = DockMenus.menu(for: entry, controller: self)
         } else {
-            menu = DockMenus.dockMenu(controller: self, settings: settings, coordinator: coordinator)
+            menu = DockMenus.dockMenu(controller: self, settings: settings, coordinator: coordinator, at: p.u)
         }
         showMenu(menu, at: local)
     }
@@ -612,7 +749,7 @@ extension DockController: DockViewDelegate {
     }
 
     private func beginTileDrag(id: String, event: NSEvent) {
-        guard let entry = entriesByID[id], entry.isApp, entry.kind != .finder,
+        guard let entry = entriesByID[id], (entry.isApp && entry.kind != .finder) || entry.isKept,
               let rect = dockView.iconRect(for: id), let index = entries.firstIndex(where: { $0.id == id })
         else { return }
         let item = NSPasteboardItem()
@@ -655,7 +792,11 @@ extension DockController: DockViewDelegate {
         if operation == [] && isRemovalPoint(screenPoint) && canRemove(id) {
             let image = bitmap(for: id, pixels: dockView.pixelSize)
             PoofEffect.show(at: screenPoint, icon: image, size: CGFloat(engine.metrics.iconSize), reduceMotion: reduceMotion)
-            pins.unpin(id)
+            if entriesByID[id]?.isRecent == true {
+                recents.remove(id)
+            } else {
+                pins.remove(id)
+            }
             rebuild(animated: true)
             engine.setDropGap(at: nil)
             engine.setDraggedItem(nil)
@@ -700,7 +841,7 @@ extension DockController: DockViewDelegate {
             return .copy
         }
         engine.setDropGap(at: nil)
-        if let item = engine.lastFrame.item(atU: p.u, v: p.v), let entry = entriesByID[item.id], entry.isApp {
+        if let item = engine.lastFrame.item(atU: p.u, v: p.v), let entry = entriesByID[item.id], entry.isApp || entry.kind == .share {
             engine.setHighlighted(item.id)
             return .copy
         }
@@ -727,9 +868,9 @@ extension DockController: DockViewDelegate {
 
         if let id = pasteboard.string(forType: .mardockTile), id == dragSourceID, let entry = entriesByID[id] {
             guard engine.lastFrame.contains(u: p.u, v: p.v, slop: engine.metrics.iconSize * 0.6),
-                  let pin = pinnable(entry)
+                  let item = keptItem(for: entry)
             else { return false }
-            pins.pin(pin, at: pinInsertionIndex(forU: p.u, excluding: id))
+            pins.insert(item, at: pinInsertionIndex(forU: p.u, excluding: id))
             dragDropHandled = true
             rebuild(animated: true)
             engine.commitDrop(insertedID: id)
@@ -751,12 +892,28 @@ extension DockController: DockViewDelegate {
             engine.commitDrop(insertedID: inserted)
             return inserted != nil
         }
-        if let item = engine.lastFrame.item(atU: p.u, v: p.v), let entry = entriesByID[item.id], entry.isApp {
-            actions.open(documents: Array(urls.prefix(100)), with: entry, running: running.runningApp(for: entry.id))
-            ripple(item.id)
-            return true
+        if let item = engine.lastFrame.item(atU: p.u, v: p.v), let entry = entriesByID[item.id] {
+            if entry.kind == .share {
+                share(Array(urls.prefix(100)), fromTile: item.id)
+                return true
+            }
+            if entry.isApp {
+                actions.open(documents: Array(urls.prefix(100)), with: entry, running: running.runningApp(for: entry.id))
+                ripple(item.id)
+                return true
+            }
         }
         return false
+    }
+}
+
+extension DockController: NSSharingServicePickerDelegate {
+    nonisolated func sharingServicePicker(_ sharingServicePicker: NSSharingServicePicker, didChoose service: NSSharingService?) {
+        MainActor.assumeIsolated {
+            sharePickerOpen = false
+            reevaluateAutoHide()
+            mouse.refresh()
+        }
     }
 }
 

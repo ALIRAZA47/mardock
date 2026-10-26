@@ -27,7 +27,7 @@ enum DockMenus {
     static func menu(for entry: DockEntry, controller: DockController) -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
-        let header = NSMenuItem(title: controller.name(for: entry.id), action: nil, keyEquivalent: "")
+        let header = NSMenuItem(title: title(for: entry, controller: controller), action: nil, keyEquivalent: "")
         header.isEnabled = false
         menu.addItem(header)
         menu.addItem(.separator())
@@ -39,6 +39,28 @@ enum DockMenus {
             })
             return menu
         case .separator:
+            return menu
+        case .spacer:
+            menu.addItem(ClosureMenuItem("Remove Spacer", symbol: "minus.circle") { [weak controller] in
+                controller?.unpin(entry)
+            })
+            return menu
+        case .divider:
+            menu.addItem(ClosureMenuItem("Rename Divider…", symbol: "pencil") { [weak controller] in
+                controller?.renameDivider(entry)
+            })
+            menu.addItem(ClosureMenuItem("Remove Divider", symbol: "minus.circle") { [weak controller] in
+                controller?.unpin(entry)
+            })
+            return menu
+        case .share:
+            let hint = NSMenuItem(title: "Drop files here to share them with AirDrop, Mail or Messages.", action: nil, keyEquivalent: "")
+            hint.isEnabled = false
+            menu.addItem(hint)
+            menu.addItem(.separator())
+            menu.addItem(ClosureMenuItem("Remove from Dock", symbol: "minus.circle") { [weak controller] in
+                controller?.unpin(entry)
+            })
             return menu
         default:
             break
@@ -67,19 +89,33 @@ enum DockMenus {
             controller?.activate(entry, modifiers: .command)
         })
 
+        menu.addItem(.separator())
         switch entry.kind {
         case .pinned:
-            menu.addItem(.separator())
             menu.addItem(ClosureMenuItem("Remove from Dock", symbol: "minus.circle") { [weak controller] in
                 controller?.unpin(entry)
             })
+        case .recent:
+            menu.addItem(ClosureMenuItem("Keep in Dock", symbol: "pin") { [weak controller] in
+                controller?.keepInDock(entry)
+            })
+            menu.addItem(ClosureMenuItem("Remove from Recents", symbol: "minus.circle") { [weak controller] in
+                controller?.unpin(entry)
+            })
         case .running where controller.pinnable(entry) != nil:
-            menu.addItem(.separator())
             menu.addItem(ClosureMenuItem("Keep in Dock", symbol: "pin") { [weak controller] in
                 controller?.keepInDock(entry)
             })
         default:
             break
+        }
+        menu.addItem(ClosureMenuItem("Change Icon…", symbol: "photo") { [weak controller] in
+            controller?.chooseIcon(for: entry)
+        })
+        if controller.hasCustomIcon(entry) {
+            menu.addItem(ClosureMenuItem("Use Original Icon", symbol: "arrow.uturn.backward") { [weak controller] in
+                controller?.resetIcon(for: entry)
+            })
         }
 
         if let app, entry.kind != .finder, app.bundleIdentifier != nil {
@@ -99,7 +135,17 @@ enum DockMenus {
         return menu
     }
 
-    static func dockMenu(controller: DockController, settings: SettingsStore, coordinator: AppCoordinator?) -> NSMenu {
+    private static func title(for entry: DockEntry, controller: DockController) -> String {
+        switch entry.kind {
+        case .spacer: return "Spacer"
+        case let .divider(title): return title.isEmpty ? "Divider" : title
+        default: return controller.name(for: entry.id)
+        }
+    }
+
+    /// The menu for the dock itself. `u` is where it was opened, so new
+    /// spacers and dividers land there.
+    static func dockMenu(controller: DockController, settings: SettingsStore, coordinator: AppCoordinator?, at u: Double?) -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
         let s = settings.settings
@@ -140,6 +186,19 @@ enum DockMenus {
         menu.addItem(ClosureMenuItem("Magnification", symbol: "plus.magnifyingglass", state: s.magnificationEnabled ? .on : .off) { [weak settings] in
             settings?.update { $0.magnificationEnabled.toggle() }
         })
+
+        menu.addItem(.separator())
+        menu.addItem(ClosureMenuItem("Add Spacer", symbol: "rectangle.dashed") { [weak controller] in
+            controller?.addItem(.newSpacer(), atU: u)
+        })
+        menu.addItem(ClosureMenuItem("Add Divider…", symbol: "rectangle.split.2x1") { [weak controller] in
+            controller?.addItem(.newDivider(), atU: u)
+        })
+        if !controller.hasShareTile {
+            menu.addItem(ClosureMenuItem("Add Share Tile", symbol: "square.and.arrow.up") { [weak controller] in
+                controller?.addItem(.share, atU: u)
+            })
+        }
 
         menu.addItem(.separator())
         menu.addItem(ClosureMenuItem("MarDock Settings…", symbol: "gearshape") { [weak coordinator] in

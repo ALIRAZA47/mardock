@@ -199,6 +199,36 @@ final class EngineTests: XCTestCase {
         XCTAssertFalse(frame.contains(u: frame.shelfEnd + 50, v: 10))
     }
 
+    func testDividersAreNarrowAndSpacersTakeAFullSlot() {
+        let metrics = DockMetrics(iconSize: 50, spacing: 10, separatorWidth: 18)
+        let engine = DockEngine(metrics: metrics)
+        engine.setItems([DockItemSpec(id: "a"), DockItemSpec(id: "d", kind: .divider), DockItemSpec(id: "s", kind: .spacer), DockItemSpec(id: "b")], animated: false)
+        let frame = engine.tick(0)
+        let widths = frame.items.map { $0.slotEnd - $0.slotStart }
+        XCTAssertEqual(widths[0], 60, accuracy: 1e-9)
+        XCTAssertEqual(widths[1], 18, accuracy: 1e-9)
+        XCTAssertEqual(widths[2], 60, accuracy: 1e-9)
+        // Both can be pointed at (to drag them or open their menu), unlike separators.
+        XCTAssertEqual(frame.item(atU: frame.items[1].center, v: 20)?.id, "d")
+        XCTAssertEqual(frame.item(atU: frame.items[2].center, v: 20)?.id, "s")
+    }
+
+    func testSpacersShowNoLabel() {
+        let engine = DockEngine(metrics: DockMetrics(iconSize: 50, spacing: 10, peakScale: 1))
+        engine.setItems([DockItemSpec(id: "a"), DockItemSpec(id: "s", kind: .spacer), DockItemSpec(id: "d", kind: .divider, hasLabel: true)], animated: false)
+        var frame = engine.tick(0)
+        engine.setPointer(DockPointer(u: frame.items[1].center, v: 20))
+        frame = settle(engine)
+        XCTAssertEqual(frame.hoveredID, "s")
+        XCTAssertNil(frame.label)
+        engine.setPointer(DockPointer(u: frame.items[2].center, v: 20))
+        frame = settle(engine)
+        XCTAssertEqual(frame.label?.id, "d")
+        engine.setPointer(DockPointer(u: frame.items[0].center, v: 20))
+        frame = settle(engine)
+        XCTAssertEqual(frame.label?.id, "a")
+    }
+
     func testIdleEngineStopsAnimating() {
         let engine = DockEngine()
         engine.setItems(specs(["a", "b"]), animated: true)

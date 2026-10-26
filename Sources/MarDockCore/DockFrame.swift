@@ -4,6 +4,13 @@ public enum DockItemKind: String, Equatable, Sendable {
     case app
     case separator
     case trash
+    /// An empty slot the user keeps between apps.
+    case spacer
+    /// A line the user keeps between groups of apps; its name shows on hover.
+    case divider
+
+    /// Separators and dividers take a narrow slot; everything else an icon's.
+    public var isNarrow: Bool { self == .separator || self == .divider }
 }
 
 /// What the dock should show for one tile. The engine turns a list of these
@@ -15,6 +22,8 @@ public struct DockItemSpec: Equatable, Sendable {
     public var isActive: Bool
     public var isHidden: Bool
     public var isLaunching: Bool
+    /// Whether hovering the tile shows its name.
+    public var hasLabel: Bool
 
     public init(
         id: String,
@@ -22,7 +31,8 @@ public struct DockItemSpec: Equatable, Sendable {
         isRunning: Bool = false,
         isActive: Bool = false,
         isHidden: Bool = false,
-        isLaunching: Bool = false
+        isLaunching: Bool = false,
+        hasLabel: Bool? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -30,6 +40,7 @@ public struct DockItemSpec: Equatable, Sendable {
         self.isActive = isActive
         self.isHidden = isHidden
         self.isLaunching = isLaunching
+        self.hasLabel = hasLabel ?? (kind != .spacer && kind != .separator)
     }
 }
 
