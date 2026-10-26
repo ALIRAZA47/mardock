@@ -948,18 +948,35 @@ extension DockController {
         }
     }
 
-    /// Opens a tile's menu for `seconds`, then picks the item titled `title`.
+    /// Opens a tile's menu for `seconds`, then picks the item titled `title`
+    /// (if there is one).
     func demoMenu(for id: String, choosing title: String, after seconds: TimeInterval) {
         guard let entry = entriesByID[id], let rect = dockView.iconRect(for: id) else { return }
-        let menu = DockMenus.menu(for: entry, controller: self)
+        demoShow(DockMenus.menu(for: entry, controller: self), at: NSPoint(x: rect.midX, y: rect.midY), choosing: title, after: seconds)
+    }
+
+    /// Opens the dock's own menu where `screenPoint` is, as a right-click on
+    /// the shelf would, then picks the item titled `title`.
+    func demoDockMenu(at screenPoint: NSPoint, choosing title: String, after seconds: TimeInterval) {
+        let local = panel.convertPoint(fromScreen: screenPoint)
+        let u = dockView.dockPoint(for: local).u
+        demoShow(DockMenus.dockMenu(controller: self, settings: settings, coordinator: coordinator, at: u), at: local, choosing: title, after: seconds)
+    }
+
+    private func demoShow(_ menu: NSMenu, at point: NSPoint, choosing title: String, after seconds: TimeInterval) {
         let close = Timer(timeInterval: seconds, repeats: false) { _ in
             MainActor.assumeIsolated { menu.cancelTracking() }
         }
         RunLoop.main.add(close, forMode: .common)
-        showMenu(menu, at: NSPoint(x: rect.midX, y: rect.midY))
+        showMenu(menu, at: point)
         if let index = menu.items.firstIndex(where: { $0.title == title }) {
             menu.performActionForItem(at: index)
         }
+    }
+
+    /// Where `id` sits among the apps ⌃⌥1–9 open (0-based), if it's one of them.
+    func shortcutSlot(of id: String) -> Int? {
+        entries.shortcutTargets.firstIndex { $0.id == id }
     }
 }
 #endif

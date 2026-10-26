@@ -360,13 +360,17 @@ enum DemoMode {
         let touring = arguments.contains("--tour")
         var pins = PinStore.defaultPins()
         if touring, let calculator = AppCatalog.pinnedApp(bundleIdentifier: "com.apple.calculator") {
-            pins.append(calculator)
+            // Third in the dock, so ⌃⌥3 reaches it.
+            pins.insert(calculator, at: min(1, pins.count))
         }
         coordinator.pins.setPins(pins)
         if arguments.contains("--backdrop") {
             showBackdrop()
         }
         coordinator.running.start()
+        if touring {
+            coordinator.recents.start()
+        }
         coordinator.dock.start()
         if touring {
             DemoTour.start(coordinator)
@@ -462,11 +466,12 @@ enum DemoMode {
 @MainActor
 final class DemoTour {
     /// How long to record after "TOUR READY": the tour, then a moment's hold.
-    static let seconds = 38
+    static let seconds = 54
     private static var current: DemoTour?
     private static let calculatorBundleIdentifier = "com.apple.calculator"
 
     private let coordinator: AppCoordinator
+    private let caption = KeyCaption()
     private var point = NSPoint.zero
     /// When the tour began, and how many seconds into it the next step is due.
     private var began = 0.0
@@ -524,6 +529,7 @@ final class DemoTour {
 
     private func run() async {
         let calculator = DockIdentity.app(Self.calculatorBundleIdentifier)
+        let notes = DockIdentity.app("com.apple.notes")
         guard let first = dock.restingCenter(of: DockIdentity.finder), let last = dock.restingCenter(of: DockIdentity.trash) else {
             print("TOUR FAIL the dock has no tiles")
             return
@@ -532,53 +538,96 @@ final class DemoTour {
 
         // Hover: icons swell under the pointer and their names float above.
         await glide(to: NSPoint(x: first.x + 30, y: first.y), over: 1.0)
-        await glide(to: NSPoint(x: last.x - 20, y: first.y), over: 2.8)
-        await glide(to: NSPoint(x: middle, y: first.y), over: 1.2)
+        await glide(to: NSPoint(x: last.x - 20, y: first.y), over: 2.6)
+        await glide(to: NSPoint(x: middle, y: first.y), over: 1.0)
 
         // Open an app: it bounces while it launches, then its light comes on.
         await glide(toTile: calculator, over: 0.9)
         dock.demoClick(calculator)
-        await pause(2.6)
+        await pause(2.4)
 
         // Its menu, then Hide: the window goes and the icon dims.
-        showMenu(of: calculator, choosing: "Hide", after: 1.6)
-        await pause(0.8)
+        showMenu(of: calculator, choosing: "Hide", after: 1.4)
+        await pause(0.6)
+
+        // Back from the keyboard: ⌃⌥ and its place in the dock.
+        await glide(to: NSPoint(x: point.x, y: screen.midY), over: 0.7)
+        if let slot = dock.shortcutSlot(of: calculator) {
+            caption.show(LaunchShortcut.controlOption.symbols + "\(slot + 1)", over: screen)
+            dock.openShortcutTarget(slot)
+        }
+        await pause(1.8)
+        caption.hide()
 
         // Every theme.
         for theme in [ThemeID.aurora, .midnight, .sunset, .liquid, .mirror, .minimal, .glass] {
             coordinator.settings.update { $0.theme = theme }
             let row = dock.restingCenter(of: DockIdentity.finder)?.y ?? first.y
-            await glide(to: NSPoint(x: middle - 110, y: row), over: 0.7)
-            await glide(to: NSPoint(x: middle + 110, y: row), over: 0.7)
+            await glide(to: NSPoint(x: middle - 110, y: row), over: 0.6)
+            await glide(to: NSPoint(x: middle + 110, y: row), over: 0.6)
         }
+
+        // A spacer and the Share tile from the dock's own menu, and a named divider.
+        if let after = dock.restingCenter(of: notes) {
+            let gap = NSPoint(x: after.x + CGFloat(dock.engine.metrics.slot) / 2, y: after.y)
+            await glide(to: gap, over: 0.8)
+            showDockMenu(at: gap, choosing: "Add Spacer", after: 1.2)
+            await pause(0.5)
+            if let index = coordinator.pins.items.firstIndex(where: { $0.id == DockIdentity.app("com.apple.photos") }) {
+                coordinator.pins.insert(.divider(id: DockIdentity.newTile(.divider), title: "Work"), at: index)
+            }
+            await pause(0.8)
+        }
+        if let end = dock.restingCenter(of: DockIdentity.trash) {
+            let spot = NSPoint(x: end.x - CGFloat(dock.engine.metrics.slot) * 1.1, y: end.y)
+            await glide(to: spot, over: 0.8)
+            showDockMenu(at: spot, choosing: "Add Share Tile", after: 1.2)
+            await pause(0.6)
+        }
+        if let divider = coordinator.pins.items.first(where: { if case .divider = $0 { return true } else { return false } }) {
+            await glide(toTile: divider.id, over: 0.9)
+            await pause(0.8)
+        }
+        await glide(toTile: DockIdentity.share, over: 1.1)
+        await pause(0.7)
+
+        // A custom icon for Notes.
+        await glide(toTile: notes, over: 0.8)
+        showMenu(of: notes, choosing: "(just look)", after: 1.0)
+        try? coordinator.customIcons.setIcon(IconProvider.symbolTile("star.fill", top: NSColor(hex: 0xFFD86F), bottom: NSColor(hex: 0xFF6FD8)), for: notes)
+        await pause(1.2)
 
         // Auto-hide: it slides away when the pointer leaves, and comes back at the edge.
         coordinator.settings.update { $0.autoHide = .always }
         await glide(to: NSPoint(x: point.x, y: screen.midY), over: 0.8)
-        await pause(1.0)
+        await pause(0.9)
         await glide(to: NSPoint(x: screen.midX, y: screen.minY + 0.5), over: 0.9)
-        await pause(1.2)
+        await pause(1.0)
         await glide(to: NSPoint(x: screen.midX, y: first.y), over: 0.5)
         coordinator.settings.update { $0.autoHide = .off }
-        await pause(0.6)
+        await pause(0.4)
 
         // On the left side of the screen.
         coordinator.settings.update { $0.position = .left }
         await pause(0.9)
         if let top = dock.restingCenter(of: DockIdentity.finder), let bottom = dock.restingCenter(of: DockIdentity.trash) {
             await glide(to: NSPoint(x: top.x, y: top.y - 20), over: 0.8)
-            await glide(to: NSPoint(x: top.x, y: bottom.y + 20), over: 2.2)
+            await glide(to: NSPoint(x: top.x, y: bottom.y + 20), over: 2.0)
         } else {
-            await pause(3.0)
+            await pause(2.8)
         }
         coordinator.settings.update { $0.position = .bottom }
-        await pause(1.0)
+        await pause(0.9)
 
-        // Quit the app from its menu: the light fades.
+        // Out of the dock while it runs, then Quit: it stays as a recent app.
         await glide(toTile: calculator, over: 0.8)
-        showMenu(of: calculator, choosing: "Quit", after: 1.4)
-        await glide(to: NSPoint(x: point.x, y: screen.midY), over: 1.0)
-        await pause(1.0)
+        showMenu(of: calculator, choosing: "Remove from Dock", after: 1.2)
+        await pause(0.8)
+        await glide(toTile: calculator, over: 0.8)
+        showMenu(of: calculator, choosing: "Quit", after: 1.2)
+        await pause(1.4)
+        await glide(to: NSPoint(x: point.x, y: screen.midY), over: 0.8)
+        await pause(0.8)
     }
 
     private func move(to p: NSPoint) {
@@ -618,11 +667,63 @@ final class DemoTour {
         dock.demoMenu(for: id, choosing: title, after: seconds)
     }
 
+    /// Opens the dock's own menu at `screenPoint` for `seconds`, then picks
+    /// the item titled `title`.
+    private func showDockMenu(at screenPoint: NSPoint, choosing title: String, after seconds: Double) {
+        due += seconds
+        dock.demoDockMenu(at: screenPoint, choosing: title, after: seconds)
+    }
+
     /// Waits until the end of a pause of `seconds`.
     private func pause(_ seconds: Double) async {
         due += seconds
         let wait = due - elapsed
         if wait > 0 { try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000)) }
+    }
+}
+
+/// A keystroke caption for the recording, like a screencast's key overlay.
+@MainActor
+final class KeyCaption {
+    private let window: NSPanel
+    private let label = NSTextField(labelWithString: "")
+
+    init() {
+        window = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 160, height: 76),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.level = .statusBar
+        window.ignoresMouseEvents = true
+        window.isReleasedWhenClosed = false
+        let effect = NSVisualEffectView()
+        effect.material = .hudWindow
+        effect.blendingMode = .behindWindow
+        effect.state = .active
+        effect.appearance = NSAppearance(named: .darkAqua)
+        effect.maskImage = DockView.roundedMask(radius: 18)
+        window.contentView = effect
+        label.font = .systemFont(ofSize: 36, weight: .semibold)
+        label.textColor = .white
+        label.alignment = .center
+        effect.addSubview(label)
+    }
+
+    func show(_ text: String, over screen: NSRect) {
+        label.stringValue = text
+        let textSize = label.intrinsicContentSize
+        let size = NSSize(width: max(150, ceil(textSize.width) + 64), height: 76)
+        window.setFrame(NSRect(x: screen.midX - size.width / 2, y: screen.minY + screen.height * 0.6, width: size.width, height: size.height), display: true)
+        label.frame = NSRect(x: 0, y: (size.height - textSize.height) / 2, width: size.width, height: textSize.height)
+        window.orderFrontRegardless()
+    }
+
+    func hide() {
+        window.orderOut(nil)
     }
 }
 
