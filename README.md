@@ -52,6 +52,9 @@ access and asks for no special permissions.
 - **Spacers and named dividers** to group apps, a **Share tile** to drop files
   on, a **recent apps** section and **custom icons** for any app.
 - **Keyboard launching**: ⌃⌥1–9 opens the first nine apps (or ⌥ / ⌥⌘).
+- **Shortcuts, Siri and Focus**: actions to switch profiles and set the theme,
+  position, hiding and magnification, plus a Focus filter, so a Work Focus can
+  bring up your Work dock.
 - **Move to another Mac**: export the dock, settings, themes, profiles and
   icons to one file and import it there.
 

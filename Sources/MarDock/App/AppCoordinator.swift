@@ -6,6 +6,9 @@ import SwiftUI
 /// Builds the object graph and owns the app's windows.
 @MainActor
 final class AppCoordinator: NSObject, ObservableObject {
+    /// The running app's coordinator, for Shortcuts actions.
+    private(set) static weak var current: AppCoordinator?
+
     let settings = SettingsStore()
     let pins = PinStore()
     let profiles: ProfileStore
@@ -43,6 +46,7 @@ final class AppCoordinator: NSObject, ObservableObject {
         icons.customIcons = customIcons
         icons.folders = folders
         dock.coordinator = self
+        Self.current = self
     }
 
     func start() {
@@ -58,6 +62,14 @@ final class AppCoordinator: NSObject, ObservableObject {
             .store(in: &cancellables)
         statusItem = StatusItemController(coordinator: self)
         installMainMenu()
+
+        // Siri and Spotlight phrases name profiles and themes.
+        MarDockShortcuts.updateAppShortcutParameters()
+        profiles.$state.map(\.profiles).removeDuplicates().dropFirst().map { _ in () }
+            .merge(with: themes.$custom.removeDuplicates().dropFirst().map { _ in () })
+            .debounce(for: .seconds(1), scheduler: RunLoop.main)
+            .sink { _ in MarDockShortcuts.updateAppShortcutParameters() }
+            .store(in: &cancellables)
 
         powerObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.willPowerOffNotification, object: nil, queue: .main

@@ -72,7 +72,8 @@ for key in CFBundleURLTypes NSAppTransportSecurity NSAppleEventsUsageDescription
 done
 
 echo "Bundle contents"
-UNEXPECTED="$(cd "$APP" && find . -type f | grep -Ev '^\./Contents/(Info\.plist|PkgInfo|MacOS/MarDock|Resources/AppIcon\.icns|_CodeSignature/CodeResources|XPCServices/[^/]+\.xpc/Contents/(Info\.plist|MacOS/MarDockAgent|_CodeSignature/CodeResources))$' || true)"
+# Metadata.appintents is the Shortcuts actions' description: data, not code.
+UNEXPECTED="$(cd "$APP" && find . -type f | grep -Ev '^\./Contents/(Info\.plist|PkgInfo|MacOS/MarDock|Resources/AppIcon\.icns|Resources/Metadata\.appintents/[A-Za-z0-9._-]+|_CodeSignature/CodeResources|XPCServices/[^/]+\.xpc/Contents/(Info\.plist|MacOS/MarDockAgent|_CodeSignature/CodeResources))$' || true)"
 [[ -z "$UNEXPECTED" ]] && pass "only expected files" || { fail "unexpected files:"; echo "$UNEXPECTED" | sed 's/^/      /'; }
 
 if [[ $FAILED -ne 0 ]]; then

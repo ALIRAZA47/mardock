@@ -43,10 +43,20 @@ SWIFT_FLAGS="${SWIFT_FLAGS:-}"
 ARCH_FLAGS=()
 for arch in $ARCHS; do ARCH_FLAGS+=(--arch "$arch"); done
 
+# Shortcuts finds an app's actions through Metadata.appintents in its
+# Resources, which Xcode extracts at build time and SwiftPM doesn't. So do
+# what Xcode does: have the compiler write out the compile-time values of
+# the App Intents types, then run Apple's extractor on them (below).
+INTENTS_DIR="$(mkdir -p "$SCRATCH/appintents" && cd "$SCRATCH/appintents" && pwd)"
+printf '%s\n' '["AppIntent","EntityQuery","AppEntity","TransientEntity","AppEnum","AppShortcutProviding","AppShortcutsProvider","AnyResolverProviding","AppIntentsPackage","DynamicOptionsProvider","_IntentValueRepresentable","_AssistantIntentsProvider","_GenerativeFunctionExtractable","IntentValueQuery","Resolver"]' \
+  > "$INTENTS_DIR/protocols.json"
+CONST_FLAGS=(-Xswiftc -emit-const-values -Xswiftc -Xfrontend -Xswiftc -const-gather-protocols-file -Xswiftc -Xfrontend -Xswiftc "$INTENTS_DIR/protocols.json")
+
 echo "▸ Compiling ($CONFIGURATION, $ARCHS)"
 # shellcheck disable=SC2086 # SWIFT_FLAGS is intentionally word-split.
-swift build -c "$CONFIGURATION" "${ARCH_FLAGS[@]}" --scratch-path "$SCRATCH" $SWIFT_FLAGS
-BIN_DIR="$(swift build -c "$CONFIGURATION" "${ARCH_FLAGS[@]}" --scratch-path "$SCRATCH" --show-bin-path)"
+swift build -c "$CONFIGURATION" "${ARCH_FLAGS[@]}" --scratch-path "$SCRATCH" "${CONST_FLAGS[@]}" $SWIFT_FLAGS
+# shellcheck disable=SC2086
+BIN_DIR="$(swift build -c "$CONFIGURATION" "${ARCH_FLAGS[@]}" --scratch-path "$SCRATCH" "${CONST_FLAGS[@]}" $SWIFT_FLAGS --show-bin-path)"
 
 APP="$OUTPUT_DIR/MarDock.app"
 AGENT="$APP/Contents/XPCServices/$BUNDLE_ID.Agent.xpc"
@@ -65,6 +75,54 @@ substitute() {
 substitute App/Info.plist "$APP/Contents/Info.plist"
 substitute App/Agent-Info.plist "$AGENT/Contents/Info.plist"
 plutil -lint "$APP/Contents/Info.plist" "$AGENT/Contents/Info.plist" >/dev/null
+
+echo "▸ Extracting Shortcuts actions"
+extract_app_intents() {
+  local processor consts xcode_build triples=()
+  processor="$(xcrun --find appintentsmetadataprocessor 2>/dev/null || true)"
+  if [[ -z "$processor" ]]; then
+    echo "  warning: appintentsmetadataprocessor needs Xcode; MarDock's actions won't appear in Shortcuts"
+    return 0
+  fi
+  # The app module's values, newest first (they're the same for every architecture).
+  consts="$(grep -rl --include='*.swiftconstvalues' 'SwitchProfileIntent' "$SCRATCH" 2>/dev/null \
+    | xargs ls -t 2>/dev/null | head -n 1 || true)"
+  if [[ -z "$consts" ]]; then
+    echo "  warning: the compiler wrote no App Intents values; MarDock's actions won't appear in Shortcuts"
+    return 0
+  fi
+  echo "  values: $consts"
+  find "$PWD/Sources/MarDock" -name '*.swift' | sort > "$INTENTS_DIR/sources.txt"
+  printf '%s\n' "$consts" > "$INTENTS_DIR/constvalues.txt"
+  : > "$INTENTS_DIR/metadata.txt"
+  : > "$INTENTS_DIR/static-metadata.txt"
+  for arch in $ARCHS; do triples+=(--target-triple "$arch-apple-macos14.0"); done
+  xcode_build="$(xcodebuild -version 2>/dev/null | awk '/Build version/ { print $3 }')"
+  "$processor" \
+    --toolchain-dir "$(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain" \
+    --module-name MarDock \
+    --sdk-root "$(xcrun --sdk macosx --show-sdk-path)" \
+    --xcode-version "${xcode_build:-unknown}" \
+    --platform-family macOS \
+    --deployment-target 14.0 \
+    --bundle-identifier "$BUNDLE_ID" \
+    --output "$APP/Contents/Resources" \
+    "${triples[@]}" \
+    --binary-file "$APP/Contents/MacOS/MarDock" \
+    --stringsdata-file "$INTENTS_DIR/ExtractedAppShortcutsMetadata.stringsdata" \
+    --source-file-list "$INTENTS_DIR/sources.txt" \
+    --metadata-file-list "$INTENTS_DIR/metadata.txt" \
+    --static-metadata-file-list "$INTENTS_DIR/static-metadata.txt" \
+    --swift-const-vals-list "$INTENTS_DIR/constvalues.txt" \
+    --compile-time-extraction \
+    --deployment-aware-processing \
+    --no-app-shortcuts-localization \
+    || echo "  warning: appintentsmetadataprocessor failed; MarDock's actions won't appear in Shortcuts"
+  if [[ -d "$APP/Contents/Resources/Metadata.appintents" ]]; then
+    ls "$APP/Contents/Resources/Metadata.appintents" | sed 's/^/  /'
+  fi
+}
+extract_app_intents
 
 echo "▸ Signing with ${SIGN_IDENTITY/#-/ad-hoc identity}"
 if [[ "$SIGN_IDENTITY" == "-" ]]; then

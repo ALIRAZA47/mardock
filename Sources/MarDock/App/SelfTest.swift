@@ -98,6 +98,9 @@ enum SelfTest {
         // Profiles keep their own items, swap them in and survive a relaunch.
         checkProfiles()
 
+        // Shortcuts can see the actions.
+        checkShortcutsMetadata()
+
         // 4. The helper.
         do {
             let info = try await agent.hello()
@@ -219,6 +222,28 @@ enum SelfTest {
             second != nil && restored && swapped && reloaded.profiles.count == 2 && reloaded.activeID == second,
             "restored \(restored), swapped \(swapped), \(reloaded.profiles.count) after a relaunch"
         )
+
+        // A Focus filter switches to its profile, and back when the Focus ends.
+        profiles.activate(first)
+        profiles.applyFocus(second)
+        let focused = profiles.activeID == second
+        profiles.applyFocus(nil)
+        check("focus-filter", second != nil && focused && profiles.activeID == first)
+    }
+
+    /// Shortcuts lists MarDock's actions only if the build extracted their
+    /// metadata into the bundle.
+    private static func checkShortcutsMetadata() {
+        guard let folder = Bundle.main.url(forResource: "Metadata", withExtension: "appintents"),
+              let files = try? FileManager.default.contentsOfDirectory(atPath: folder.path)
+        else {
+            check("shortcuts-metadata", false, "no Metadata.appintents in the bundle")
+            return
+        }
+        let text = files.compactMap { try? String(contentsOf: folder.appendingPathComponent($0), encoding: .utf8) }.joined()
+        let expected = ["SwitchProfileIntent", "SetThemeIntent", "SetDockPositionIntent", "SetAutoHideIntent", "DockFocusFilter"]
+        let missing = expected.filter { !text.contains($0) }
+        check("shortcuts-metadata", missing.isEmpty, missing.isEmpty ? files.sorted().joined(separator: ", ") : "missing \(missing.joined(separator: ", "))")
     }
 
     private static func expectRefusal(_ name: String, _ expected: AgentFailure, _ body: () async throws -> Void) async {

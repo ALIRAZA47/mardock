@@ -34,6 +34,13 @@ There is no network entitlement, so the sandbox refuses every socket the app
 could open. There is no Accessibility, Screen Recording, Input Monitoring,
 Automation or Full Disk Access permission, and none is ever requested.
 
+**Shortcuts actions** (switch profile, set the theme, position, hiding or
+magnification, open Settings) and the **Focus filter** run inside the same
+sandboxed app. Each takes a profile or theme MarDock already has, or one of a
+fixed set of options, and changes nothing but MarDock's own dock. The
+bundle's `Metadata.appintents` folder is the description of those actions
+that Shortcuts reads: data, not code.
+
 The sandbox correctly forbids two things a dock needs: quitting other apps and
 changing the macOS Dock's preferences (to hide or tune it). Those are done by a
 small **XPC helper** embedded in the app bundle. (Hiding other apps turned out

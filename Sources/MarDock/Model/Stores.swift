@@ -220,6 +220,22 @@ final class ProfileStore: ObservableObject {
         return current
     }
 
+    /// The profile in use before a Focus switched profiles.
+    private var beforeFocus: String?
+
+    /// A Focus that uses profile `id` turned on, or (nil) turned off: the
+    /// dock goes back to the profile it had before.
+    func applyFocus(_ id: String?) {
+        if let id {
+            guard state.profiles.contains(where: { $0.id == id }) else { return }
+            if beforeFocus == nil { beforeFocus = state.activeID }
+            activate(id)
+        } else if let previous = beforeFocus {
+            beforeFocus = nil
+            activate(previous)
+        }
+    }
+
     /// Replaces every profile (importing a backup).
     func replace(with profiles: DockProfiles) {
         state = profiles
