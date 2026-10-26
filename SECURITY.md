@@ -27,7 +27,7 @@ runs inside the **App Sandbox**. Its only entitlements are:
 | Entitlement | Why |
 | --- | --- |
 | `com.apple.security.app-sandbox` | Confines the process. |
-| `com.apple.security.files.user-selected.read-only` | Lets you pick apps to add in an Open panel. |
+| `com.apple.security.files.user-selected.read-write` | Lets MarDock open or save the files you pick in an Open or Save panel (apps to add, images for icons, theme and settings files), and nothing else. |
 
 There is no network entitlement, so the sandbox refuses every socket the app
 could open. There is no Accessibility, Screen Recording, Input Monitoring,

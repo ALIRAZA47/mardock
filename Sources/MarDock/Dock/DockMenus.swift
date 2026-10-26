@@ -151,10 +151,22 @@ enum DockMenus {
         let s = settings.settings
 
         let themes = NSMenu()
+        let current = coordinator?.themes.recipe(for: s) ?? .builtIn(s.theme)
         for theme in ThemeID.allCases {
-            themes.addItem(ClosureMenuItem(theme.displayName, state: s.theme == theme ? .on : .off) { [weak settings] in
-                settings?.update { $0.theme = theme }
+            themes.addItem(ClosureMenuItem(theme.displayName, state: current.id == ThemeRecipe.builtIn(theme).id ? .on : .off) { [weak settings] in
+                settings?.update {
+                    $0.theme = theme
+                    $0.customTheme = nil
+                }
             })
+        }
+        if let custom = coordinator?.themes.custom, !custom.isEmpty {
+            themes.addItem(.separator())
+            for recipe in custom {
+                themes.addItem(ClosureMenuItem(recipe.name, state: current.id == recipe.id ? .on : .off) { [weak settings] in
+                    settings?.update { $0.customTheme = recipe.id }
+                })
+            }
         }
         let themeItem = NSMenuItem(title: "Theme", action: nil, keyEquivalent: "")
         themeItem.image = NSImage(systemSymbolName: "paintpalette", accessibilityDescription: nil)

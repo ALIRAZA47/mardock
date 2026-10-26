@@ -30,7 +30,8 @@ extension NSPasteboard.PasteboardType {
 final class DockView: NSView {
     struct Configuration {
         var position: DockPosition = .bottom
-        var themeID: ThemeID = .glass
+        /// Identifies the theme's glass; the backdrop is rebuilt when it changes.
+        var themeKey = ""
         var style: ThemeStyle = .style(for: .glass)
         var accent: NSColor = .controlAccentColor
         var indicatorStyle: IndicatorStyle = .glow
@@ -105,7 +106,7 @@ final class DockView: NSView {
     func setConfiguration(_ new: Configuration) {
         let old = configuration
         configuration = new
-        let backdropChanged = old.themeID != new.themeID || old.blending != new.blending
+        let backdropChanged = old.themeKey != new.themeKey || old.blending != new.blending
         if backdropChanged {
             rebuildBackdrop()
         }

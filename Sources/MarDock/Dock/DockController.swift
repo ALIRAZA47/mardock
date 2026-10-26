@@ -18,6 +18,7 @@ final class DockController: NSObject {
     private let pins: PinStore
     private let recents: RecentAppsStore
     private let customIcons: CustomIconStore
+    private let themes: ThemeStore
     private let running: RunningAppsMonitor
     private let icons: IconProvider
     private let actions: AppActions
@@ -50,13 +51,14 @@ final class DockController: NSObject {
     private var followTimer: Timer?
 
     init(
-        settings: SettingsStore, pins: PinStore, recents: RecentAppsStore, customIcons: CustomIconStore,
+        settings: SettingsStore, pins: PinStore, recents: RecentAppsStore, customIcons: CustomIconStore, themes: ThemeStore,
         running: RunningAppsMonitor, icons: IconProvider, actions: AppActions, systemDock: SystemDockManager
     ) {
         self.settings = settings
         self.pins = pins
         self.recents = recents
         self.customIcons = customIcons
+        self.themes = themes
         self.running = running
         self.icons = icons
         self.actions = actions
@@ -76,6 +78,12 @@ final class DockController: NSObject {
 
         settings.$settings
             .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.applySettings() }
+            .store(in: &cancellables)
+        // Editing the theme in use restyles the dock as you go.
+        themes.$custom
+            .dropFirst()
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.applySettings() }
             .store(in: &cancellables)
@@ -176,7 +184,8 @@ final class DockController: NSObject {
     /// screen) and pushes them to the engine, the view and the window.
     private func updateGeometry(force: Bool = false) {
         let s = settings.settings
-        let style = ThemeStyle.style(for: s.theme)
+        let recipe = themes.recipe(for: s)
+        let style = ThemeStyle(recipe: recipe)
         let floor = style.floor && s.position == .bottom
         var available = 0.0
         if let target = resolveScreen() {
@@ -190,7 +199,7 @@ final class DockController: NSObject {
 
         var configuration = DockView.Configuration()
         configuration.position = s.position
-        configuration.themeID = s.theme
+        configuration.themeKey = ThemeStyle.key(for: recipe)
         configuration.style = style
         configuration.accent = ThemeStyle.accentColor(for: s.accent, theme: style)
         configuration.indicatorStyle = s.indicatorStyle
@@ -270,6 +279,7 @@ final class DockController: NSObject {
         case .running: return entry.running?.name ?? "App"
         case .trash: return "Trash"
         case .share: return "Share"
+        case let .folder(stack): return stack.name
         case let .divider(title): return title
         case .separator, .spacer: return ""
         }
@@ -446,7 +456,7 @@ final class DockController: NSObject {
 
     func activate(_ entry: DockEntry, modifiers: NSEvent.ModifierFlags) {
         switch entry.kind {
-        case .separator, .spacer, .divider:
+        case .separator, .spacer, .divider, .folder:
             return
         case .trash:
             ripple(entry.id)
@@ -607,6 +617,7 @@ final class DockController: NSObject {
         case .spacer: return .spacer(id: entry.id)
         case let .divider(title): return .divider(id: entry.id, title: title)
         case .share: return .share
+        case let .folder(stack): return .folder(stack)
         default: return pinnable(entry).map(DockItem.app)
         }
     }

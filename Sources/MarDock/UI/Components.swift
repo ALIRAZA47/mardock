@@ -130,7 +130,9 @@ struct FeatureRow: View {
 // MARK: - Theme gallery
 
 struct ThemeGallery: View {
-    @Binding var selection: ThemeID
+    /// The built-in theme in use, or nil while one of the user's own is.
+    let selection: ThemeID?
+    let select: (ThemeID) -> Void
 
     private let columns = [GridItem(.adaptive(minimum: 118, maximum: 160), spacing: 14)]
 
@@ -138,7 +140,7 @@ struct ThemeGallery: View {
         LazyVGrid(columns: columns, spacing: 14) {
             ForEach(ThemeID.allCases) { theme in
                 Button {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { selection = theme }
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { select(theme) }
                 } label: {
                     ThemeCard(theme: theme, selected: selection == theme)
                 }
@@ -253,6 +255,81 @@ struct MiniDock: View {
                 .overlay(Trapezoid(inset: 0.12).stroke(Color.white.opacity(0.85), lineWidth: 0.8))
         case .minimal:
             Color.clear
+        }
+    }
+}
+
+/// A card for one of the user's own themes.
+struct RecipeCard: View {
+    let recipe: ThemeRecipe
+    let selected: Bool
+
+    var body: some View {
+        VStack(spacing: 7) {
+            RecipeSwatch(recipe: recipe)
+                .frame(height: 72)
+                .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .strokeBorder(selected ? Color.accentColor : Color.primary.opacity(0.12), lineWidth: selected ? 2.5 : 1)
+                )
+                .shadow(color: .black.opacity(selected ? 0.22 : 0.08), radius: selected ? 8 : 3, y: 2)
+                .scaleEffect(selected ? 1.03 : 1)
+            Text(recipe.name)
+                .font(.callout.weight(selected ? .semibold : .regular))
+                .foregroundStyle(selected ? Color.accentColor : Color.primary)
+                .lineLimit(1)
+        }
+        .contentShape(Rectangle())
+    }
+}
+
+/// A theme's swatch with a tiny dock drawn from its recipe.
+struct RecipeSwatch: View {
+    let recipe: ThemeRecipe
+
+    var body: some View {
+        let colors = recipe.swatch.map { Color(nsColor: NSColor(themeColor: $0)) }
+        ZStack(alignment: .bottom) {
+            LinearGradient(colors: colors.count >= 2 ? colors : [.gray, .gray], startPoint: .topLeading, endPoint: .bottomTrailing)
+            Circle()
+                .fill(Color.white.opacity(0.28))
+                .frame(width: 54, height: 54)
+                .blur(radius: 16)
+                .offset(x: -34, y: -24)
+            HStack(alignment: .bottom, spacing: 4) {
+                ForEach([13, 16, 22, 16, 13].indices, id: \.self) { i in
+                    let size = CGFloat([13, 16, 22, 16, 13][i])
+                    RoundedRectangle(cornerRadius: size * 0.27, style: .continuous)
+                        .fill(Color.white.opacity(0.9))
+                        .frame(width: size, height: size)
+                        .shadow(color: .black.opacity(0.2), radius: 1.5, y: 1)
+                }
+            }
+            .padding(.horizontal, 7)
+            .padding(.top, 4)
+            .padding(.bottom, 6)
+            .background(alignment: .bottom) { shelf.frame(height: 25) }
+            .padding(.bottom, 7)
+        }
+    }
+
+    @ViewBuilder private var shelf: some View {
+        let shape = RoundedRectangle(cornerRadius: 25 * recipe.cornerFactor, style: .continuous)
+        let border = LinearGradient(
+            colors: [Color(nsColor: NSColor(themeColor: recipe.borderStart)), Color(nsColor: NSColor(themeColor: recipe.borderEnd))],
+            startPoint: .top, endPoint: .bottom
+        )
+        let colors = (recipe.aurora.isEmpty ? recipe.tint : recipe.aurora).map { Color(nsColor: NSColor(themeColor: $0)) }
+        let base: Color = recipe.tone == .dark || recipe.glass == .smoked ? Color.black.opacity(0.45) : Color.white.opacity(0.38)
+        if recipe.glass == .none {
+            Color.clear
+        } else {
+            shape.fill(base)
+                .overlay(shape.fill(LinearGradient(colors: colors.count >= 2 ? colors : [colors.first ?? .clear, colors.first ?? .clear], startPoint: .leading, endPoint: .trailing))
+                    .opacity(max(recipe.tintOpacity, recipe.auroraOpacity)))
+                .overlay(shape.strokeBorder(border, lineWidth: max(recipe.borderWidth, 0.5)))
+                .shadow(color: recipe.edgeGlow.map { Color(nsColor: NSColor(themeColor: $0)) } ?? .clear, radius: 4)
         }
     }
 }

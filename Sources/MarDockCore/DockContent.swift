@@ -92,9 +92,11 @@ public enum DockIdentity {
     public enum UserTileKind: String, Sendable {
         case spacer
         case divider
+        case folder
+        case profile
     }
 
-    /// `spacer:` or `divider:` followed by 1–36 letters, digits or hyphens.
+    /// `spacer:`, `divider:`… followed by 1–36 letters, digits or hyphens.
     public static func isValidTileID(_ id: String, kind: UserTileKind) -> Bool {
         let prefix = kind.rawValue + ":"
         guard id.hasPrefix(prefix) else { return false }
@@ -108,6 +110,65 @@ public enum DockIdentity {
     }
 }
 
+/// A folder kept in the dock, shown as a stack of its newest files.
+public struct FolderStack: Codable, Equatable, Hashable, Sendable {
+    public enum Display: String, Codable, CaseIterable, Sendable {
+        /// The newest files, piled up.
+        case stack
+        /// The folder's own icon.
+        case folder
+    }
+
+    public enum Sorting: String, Codable, CaseIterable, Sendable {
+        case dateAdded
+        case dateModified
+        case name
+    }
+
+    public var id: String
+    public var name: String
+    /// Where the folder was when it was added (for display; the bookmark is
+    /// what finds it).
+    public var path: String
+    /// A security-scoped bookmark: the sandbox's record that the user chose
+    /// this folder. Without it MarDock can't open the folder.
+    public var bookmark: Data
+    public var display: Display
+    public var sorting: Sorting
+
+    public static let maxBookmarkBytes = 16 * 1024
+
+    public init?(id: String, name: String, path: String, bookmark: Data, display: Display = .stack, sorting: Sorting = .dateAdded) {
+        guard DockIdentity.isValidTileID(id, kind: .folder), InputValidation.isPlausibleAbsolutePath(path),
+              !bookmark.isEmpty, bookmark.count <= Self.maxBookmarkBytes
+        else { return nil }
+        self.id = id
+        self.path = path
+        self.bookmark = bookmark
+        self.display = display
+        self.sorting = sorting
+        let cleanName = InputValidation.sanitizedDisplayName(name)
+        self.name = cleanName.isEmpty ? InputValidation.sanitizedDisplayName(path.split(separator: "/").last.map(String.init) ?? "Folder") : cleanName
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, name, path, bookmark, display, sorting }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        guard let stack = FolderStack(
+            id: try c.decode(String.self, forKey: .id),
+            name: (try? c.decodeIfPresent(String.self, forKey: .name)) ?? "",
+            path: try c.decode(String.self, forKey: .path),
+            bookmark: try c.decode(Data.self, forKey: .bookmark),
+            display: (try? c.decodeIfPresent(Display.self, forKey: .display)) ?? .stack,
+            sorting: (try? c.decodeIfPresent(Sorting.self, forKey: .sorting)) ?? .dateAdded
+        ) else {
+            throw DecodingError.dataCorrupted(.init(codingPath: c.codingPath, debugDescription: "Invalid folder"))
+        }
+        self = stack
+    }
+}
+
 /// Something the user keeps in the dock, in the order they chose.
 public enum DockItem: Equatable, Hashable, Sendable, Identifiable {
     case app(PinnedApp)
@@ -117,6 +178,8 @@ public enum DockItem: Equatable, Hashable, Sendable, Identifiable {
     case divider(id: String, title: String)
     /// Files dropped on it go to the share sheet (AirDrop, Mail, Messages…).
     case share
+    /// A folder, shown as a stack of its newest files.
+    case folder(FolderStack)
 
     public static let maxCount = 128
 
@@ -134,6 +197,7 @@ public enum DockItem: Equatable, Hashable, Sendable, Identifiable {
         case let .spacer(id): return id
         case let .divider(id, _): return id
         case .share: return DockIdentity.share
+        case let .folder(stack): return stack.id
         }
     }
 
@@ -169,8 +233,8 @@ public enum DockItem: Equatable, Hashable, Sendable, Identifiable {
 }
 
 extension DockItem: Codable {
-    private enum CodingKeys: String, CodingKey { case type, app, id, title }
-    private enum Kind: String, Codable { case app, spacer, divider, share }
+    private enum CodingKeys: String, CodingKey { case type, app, id, title, folder }
+    private enum Kind: String, Codable { case app, spacer, divider, share, folder }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -191,6 +255,8 @@ extension DockItem: Codable {
             self = .divider(id: id, title: InputValidation.sanitizedDisplayName(title))
         case .share:
             self = .share
+        case .folder:
+            self = .folder(try c.decode(FolderStack.self, forKey: .folder))
         }
     }
 
@@ -209,6 +275,9 @@ extension DockItem: Codable {
             try c.encode(title, forKey: .title)
         case .share:
             try c.encode(Kind.share, forKey: .type)
+        case let .folder(stack):
+            try c.encode(Kind.folder, forKey: .type)
+            try c.encode(stack, forKey: .folder)
         }
     }
 }
@@ -273,6 +342,7 @@ public struct DockEntry: Equatable, Sendable, Identifiable {
         case spacer
         case divider(title: String)
         case share
+        case folder(FolderStack)
     }
 
     public var id: String
@@ -296,7 +366,7 @@ public struct DockEntry: Equatable, Sendable, Identifiable {
     /// Anything in the user's own list: kept apps, spacers, dividers, the Share tile.
     public var isKept: Bool {
         switch kind {
-        case .pinned, .spacer, .divider, .share: return true
+        case .pinned, .spacer, .divider, .share, .folder: return true
         case .finder, .running, .recent, .separator, .trash: return false
         }
     }
@@ -309,7 +379,7 @@ public struct DockEntry: Equatable, Sendable, Identifiable {
     public var isApp: Bool {
         switch kind {
         case .finder, .pinned, .running, .recent: return true
-        case .separator, .trash, .spacer, .divider, .share: return false
+        case .separator, .trash, .spacer, .divider, .share, .folder: return false
         }
     }
 
@@ -336,7 +406,7 @@ public struct DockEntry: Equatable, Sendable, Identifiable {
         case let .divider(title):
             kind = .divider
             hasLabel = !title.isEmpty
-        case .finder, .pinned, .running, .recent, .share:
+        case .finder, .pinned, .running, .recent, .share, .folder:
             kind = .app
         }
         return DockItemSpec(
@@ -385,6 +455,8 @@ public enum DockContentBuilder {
                 entries.append(DockEntry(id: id, kind: .divider(title: title), running: nil, isLaunching: false))
             case .share:
                 entries.append(DockEntry(id: DockIdentity.share, kind: .share, running: nil, isLaunching: false))
+            case let .folder(stack):
+                entries.append(DockEntry(id: stack.id, kind: .folder(stack), running: nil, isLaunching: false))
             }
         }
 

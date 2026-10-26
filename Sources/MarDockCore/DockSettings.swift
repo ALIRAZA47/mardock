@@ -98,6 +98,8 @@ public enum LaunchShortcut: String, Codable, CaseIterable, Sendable, Identifiabl
 /// damaged or tampered preferences file can't put the app in a bad state.
 public struct DockSettings: Codable, Equatable, Sendable {
     public var theme: ThemeID = .glass
+    /// A theme the user made (`theme:…`), used instead of `theme` while it exists.
+    public var customTheme: String?
     public var accent: AccentChoice = .theme
     public var iconSize: Double = 56
     public var magnificationEnabled = true
@@ -143,6 +145,9 @@ public struct DockSettings: Codable, Equatable, Sendable {
         s.revealDelay = Self.clamp(revealDelay, Self.revealDelayRange, fallback: d.revealDelay)
         s.animationSpeed = Self.clamp(animationSpeed, Self.animationSpeedRange, fallback: d.animationSpeed)
         s.recentAppsCount = min(max(recentAppsCount, Self.recentAppsRange.lowerBound), Self.recentAppsRange.upperBound)
+        if let custom = customTheme, custom.hasPrefix("builtin:") || !ThemeRecipe.isValidID(custom) {
+            s.customTheme = nil
+        }
         return s
     }
 
@@ -156,7 +161,7 @@ public struct DockSettings: Codable, Equatable, Sendable {
     // MARK: Codable
 
     private enum CodingKeys: String, CodingKey {
-        case theme, accent, iconSize, magnificationEnabled, magnification, magnificationSpread
+        case theme, customTheme, accent, iconSize, magnificationEnabled, magnification, magnificationSpread
         case position, display, autoHide, revealDelay, showLabels, showRunningApps, showTrash
         case clickToHide, bounceOnLaunch, clickRipple, reflections, indicatorStyle, dimHiddenApps
         case animationSpeed, hideSystemDock, restoreSystemDockOnQuit, showInFullScreen
@@ -170,6 +175,7 @@ public struct DockSettings: Codable, Equatable, Sendable {
             (try? c.decodeIfPresent(T.self, forKey: key)) ?? fallback
         }
         s.theme = value(.theme, s.theme)
+        s.customTheme = value(.customTheme, s.customTheme)
         s.accent = value(.accent, s.accent)
         s.iconSize = value(.iconSize, s.iconSize)
         s.magnificationEnabled = value(.magnificationEnabled, s.magnificationEnabled)

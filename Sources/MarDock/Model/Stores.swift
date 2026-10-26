@@ -213,6 +213,15 @@ final class CustomIconStore: ObservableObject {
 
     func hasIcon(for id: String) -> Bool { known.contains(id) }
 
+    /// The tiles that have a custom icon.
+    var iconIDs: [String] { known.sorted() }
+
+    /// The stored PNG, for backups.
+    func pngData(for id: String) -> Data? {
+        guard known.contains(id), let url = fileURL(for: id) else { return nil }
+        return try? Data(contentsOf: url)
+    }
+
     func icon(for id: String) -> NSImage? {
         guard known.contains(id) else { return nil }
         if let cached = cache[id] { return cached }
@@ -271,6 +280,83 @@ enum CustomIconError: LocalizedError {
 
     var errorDescription: String? {
         "That file isn't an image MarDock can use."
+    }
+}
+
+/// Themes the user made in the theme editor or loaded from files.
+@MainActor
+final class ThemeStore: ObservableObject {
+    @Published private(set) var custom: [ThemeRecipe]
+
+    private let defaults: UserDefaults
+    private let key = "themes.v1"
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        custom = ThemeRecipe.decodeList(defaults.data(forKey: key))
+    }
+
+    /// The theme the settings ask for: the user's own while it exists,
+    /// otherwise the built-in one.
+    func recipe(for settings: DockSettings) -> ThemeRecipe {
+        if let id = settings.customTheme, let theme = theme(withID: id) {
+            return theme
+        }
+        return .builtIn(settings.theme)
+    }
+
+    func theme(withID id: String) -> ThemeRecipe? {
+        custom.first { $0.id == id }
+    }
+
+    /// Adds a theme, or replaces the one with the same id.
+    func save(_ recipe: ThemeRecipe) {
+        let clean = recipe.sanitized()
+        guard !clean.isBuiltIn else { return }
+        var list = custom
+        if let index = list.firstIndex(where: { $0.id == clean.id }) {
+            list[index] = clean
+        } else {
+            list.append(clean)
+        }
+        set(list)
+    }
+
+    func delete(_ id: String) {
+        set(custom.filter { $0.id != id })
+    }
+
+    /// Reads a theme file. One that would replace a theme already here
+    /// comes in as a copy instead.
+    @discardableResult
+    func importTheme(from url: URL) throws -> ThemeRecipe {
+        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        guard size > 0, size <= ThemeRecipe.maxFileBytes, let data = try? Data(contentsOf: url),
+              var recipe = ThemeRecipe.decode(data)
+        else { throw ThemeFileError.unreadable }
+        if recipe.isBuiltIn || theme(withID: recipe.id) != nil {
+            recipe = recipe.duplicate(named: recipe.name)
+        }
+        save(recipe)
+        return recipe
+    }
+
+    func export(_ recipe: ThemeRecipe, to url: URL) throws {
+        guard let data = recipe.encoded() else { throw ThemeFileError.unreadable }
+        try data.write(to: url, options: .atomic)
+    }
+
+    private func set(_ list: [ThemeRecipe]) {
+        custom = Array(list.prefix(ThemeRecipe.maxCustomThemes))
+        defaults.set(ThemeRecipe.encodeList(custom), forKey: key)
+    }
+}
+
+enum ThemeFileError: LocalizedError {
+    case unreadable
+
+    var errorDescription: String? {
+        "That file isn't a MarDock theme."
     }
 }
 

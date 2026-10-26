@@ -8,13 +8,15 @@ import SwiftUI
 /// magnification.
 struct DockPreviewCard: NSViewRepresentable {
     var settings: DockSettings
+    /// The theme to show; the built-in one the settings name if nil.
+    var recipe: ThemeRecipe?
 
     func makeNSView(context: Context) -> DockPreviewView {
-        DockPreviewView(settings: settings)
+        DockPreviewView(settings: settings, recipe: recipe)
     }
 
     func updateNSView(_ view: DockPreviewView, context: Context) {
-        view.update(settings: settings)
+        view.update(settings: settings, recipe: recipe)
     }
 }
 
@@ -34,6 +36,7 @@ final class DockPreviewView: NSView {
     private var samples: [Sample] = []
     private var bitmaps: [String: CGImage] = [:]
     private var settings: DockSettings
+    private var recipe: ThemeRecipe?
     private var hoverPointer: DockPointer?
     private var lastHover: TimeInterval = 0
     private var demoClock: Double = 0
@@ -41,8 +44,9 @@ final class DockPreviewView: NSView {
     private var tracking: NSTrackingArea?
     private let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
 
-    init(settings: DockSettings) {
+    init(settings: DockSettings, recipe: ThemeRecipe? = nil) {
         self.settings = settings
+        self.recipe = recipe
         super.init(frame: NSRect(x: 0, y: 0, width: 600, height: 200))
         wantsLayer = true
         layer?.masksToBounds = true
@@ -59,15 +63,17 @@ final class DockPreviewView: NSView {
         dockView.nameProvider = { [weak self] id in self?.samples.first { $0.id == id }?.name ?? "" }
         driver.onFrame = { [weak self] dt in self?.step(dt) ?? false }
         engine.setItems(samples.map(\.spec), animated: false)
-        update(settings: settings)
+        update(settings: settings, recipe: recipe)
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
-    func update(settings: DockSettings) {
+    func update(settings: DockSettings, recipe: ThemeRecipe? = nil) {
         self.settings = settings
-        let style = ThemeStyle.style(for: settings.theme)
+        self.recipe = recipe
+        let theme = recipe ?? .builtIn(settings.theme)
+        let style = ThemeStyle(recipe: theme)
         var previewSettings = settings
         let count = Double(max(samples.count, 1))
         let fitting = (Double(bounds.width) - 80) / (count * 1.2)
@@ -83,7 +89,7 @@ final class DockPreviewView: NSView {
 
         var configuration = DockView.Configuration()
         configuration.position = .bottom
-        configuration.themeID = settings.theme
+        configuration.themeKey = ThemeStyle.key(for: theme)
         configuration.style = style
         configuration.accent = ThemeStyle.accentColor(for: settings.accent, theme: style)
         configuration.indicatorStyle = settings.indicatorStyle
@@ -99,7 +105,7 @@ final class DockPreviewView: NSView {
         super.setFrameSize(newSize)
         backdrop.frame = bounds
         layoutBackdrop()
-        update(settings: settings)
+        update(settings: settings, recipe: recipe)
     }
 
     override func viewDidMoveToWindow() {

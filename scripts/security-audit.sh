@@ -1,6 +1,6 @@
 #!/bin/bash
 # Verifies the security properties MarDock promises, on the built bundle:
-#   • exact entitlements (sandbox + user-selected read-only; helper: none)
+#   • exact entitlements (sandbox + user-selected files; helper: none)
 #   • Hardened Runtime on both executables, valid signatures
 #   • no networking, process-spawning, scripting or dynamic-loading APIs
 #     imported by either binary
@@ -34,7 +34,7 @@ done
 
 echo "Entitlements"
 APP_KEYS="$(entitlement_keys "$APP")"
-EXPECTED="com.apple.security.app-sandbox com.apple.security.files.user-selected.read-only"
+EXPECTED="com.apple.security.app-sandbox com.apple.security.files.user-selected.read-write"
 [[ "$APP_KEYS" == "$EXPECTED" ]] && pass "app: $APP_KEYS" || fail "app entitlements are '$APP_KEYS', expected '$EXPECTED'"
 AGENT_KEYS="$(entitlement_keys "$AGENT")"
 [[ -z "$AGENT_KEYS" ]] && pass "helper: none" || fail "helper has entitlements: $AGENT_KEYS"

@@ -404,3 +404,163 @@ final class AgentWireTests: XCTestCase {
         XCTAssertFalse(AgentWire.isWellFormed(.hello(clientVersion: -1)))
     }
 }
+
+final class ThemeRecipeTests: XCTestCase {
+    func testBuiltInsHaveStableIDsAndKeepTheirLook() {
+        for theme in ThemeID.allCases {
+            let recipe = ThemeRecipe.builtIn(theme)
+            XCTAssertEqual(recipe.id, "builtin:" + theme.rawValue)
+            XCTAssertTrue(recipe.isBuiltIn)
+            XCTAssertEqual(recipe, recipe.sanitized(), theme.rawValue)
+            XCTAssertTrue(ThemeRecipe.isValidID(recipe.id))
+        }
+        XCTAssertEqual(ThemeRecipe.builtIn(.midnight).tone, .dark)
+        XCTAssertEqual(ThemeRecipe.builtIn(.minimal).glass, .none)
+        XCTAssertTrue(ThemeRecipe.builtIn(.mirror).floor)
+        XCTAssertEqual(ThemeRecipe.builtIn(.aurora).aurora.count, 4)
+    }
+
+    func testRoundTripAndDuplicate() throws {
+        var recipe = ThemeRecipe.builtIn(.sunset).duplicate(named: "  Dusk  ")
+        XCTAssertFalse(recipe.isBuiltIn)
+        XCTAssertTrue(ThemeRecipe.isValidID(recipe.id))
+        XCTAssertEqual(recipe.name, "Dusk")
+        recipe.edgeGlow = ThemeColor(hex: 0xFF00AA, alpha: 0.5)
+        let decoded = try XCTUnwrap(ThemeRecipe.decode(try XCTUnwrap(recipe.encoded())))
+        XCTAssertEqual(decoded, recipe)
+        XCTAssertNotEqual(ThemeRecipe.builtIn(.sunset).duplicate(named: "Dusk").id, recipe.id)
+    }
+
+    func testHostileFilesBecomeValidThemes() throws {
+        let json = """
+        {"id":"theme:../../x","name":"\\u202Eevil\\u0007","glass":"plasma","tintOpacity":99,"borderWidth":-3,
+         "shadowRadius":1e300,"cornerFactor":"round","tint":[{"red":2,"green":-1,"blue":0.5},{"red":0,"green":0,"blue":0},
+         {"red":0,"green":0,"blue":0},{"red":0,"green":0,"blue":0},{"red":0,"green":0,"blue":0}],"swatch":[]}
+        """
+        let recipe = try XCTUnwrap(ThemeRecipe.decode(Data(json.utf8)))
+        XCTAssertTrue(ThemeRecipe.isValidID(recipe.id))
+        XCTAssertFalse(recipe.id.contains(".."))
+        XCTAssertEqual(recipe.name, "evil")
+        XCTAssertEqual(recipe.glass, .frosted)
+        XCTAssertEqual(recipe.tintOpacity, 1)
+        XCTAssertEqual(recipe.borderWidth, 0)
+        XCTAssertEqual(recipe.shadowRadius, ThemeRecipe.shadowRadiusRange.upperBound)
+        XCTAssertEqual(recipe.cornerFactor, 0.34)
+        XCTAssertEqual(recipe.tint.count, ThemeRecipe.maxTint)
+        XCTAssertEqual(recipe.tint[0], ThemeColor(red: 1, green: 0, blue: 0.5))
+        XCTAssertEqual(recipe.swatch.count, 2)
+        XCTAssertNil(ThemeRecipe.decode(Data("[]".utf8)))
+        XCTAssertNil(ThemeRecipe.decode(Data(repeating: 0x20, count: ThemeRecipe.maxFileBytes + 1)))
+    }
+
+    func testColorsFromHex() {
+        let color = ThemeColor(hex: 0xFF8000, alpha: 0.5)
+        XCTAssertEqual(color.red, 1)
+        XCTAssertEqual(color.green, 128.0 / 255, accuracy: 1e-9)
+        XCTAssertEqual(color.hexString, "#FF800080")
+        XCTAssertEqual(ThemeColor(hex: 0x123456).hexString, "#123456")
+    }
+}
+
+final class BackupTests: XCTestCase {
+    private let safari = PinnedApp(bundleIdentifier: "com.apple.Safari", path: "/Applications/Safari.app", name: "Safari")!
+    private var folder: FolderStack {
+        FolderStack(id: "folder:dl", name: "Downloads", path: "/Users/me/Downloads", bookmark: Data([1, 2, 3]))!
+    }
+
+    func testFoldersValidateAndRoundTrip() throws {
+        XCTAssertNil(FolderStack(id: "folder:dl", name: "x", path: "relative/path", bookmark: Data([1])))
+        XCTAssertNil(FolderStack(id: "folder:dl", name: "x", path: "/Users/me/../../etc", bookmark: Data([1])))
+        XCTAssertNil(FolderStack(id: "folder:dl", name: "x", path: "/Users/me", bookmark: Data()))
+        XCTAssertNil(FolderStack(id: "spacer:dl", name: "x", path: "/Users/me", bookmark: Data([1])))
+        XCTAssertNil(FolderStack(id: "folder:dl", name: "x", path: "/Users/me", bookmark: Data(count: FolderStack.maxBookmarkBytes + 1)))
+        XCTAssertEqual(FolderStack(id: "folder:dl", name: " ", path: "/Users/me/Downloads", bookmark: Data([1]))?.name, "Downloads")
+        let items: [DockItem] = [.app(safari), .folder(folder)]
+        XCTAssertEqual(DockItem.decodeList(DockItem.encodeList(items)), items)
+        let entries = DockContentBuilder.build(items: items, running: [], showTrash: false)
+        XCTAssertEqual(entries.last?.id, "folder:dl")
+        XCTAssertTrue(entries.last!.isKept)
+        XCTAssertFalse(entries.last!.isApp)
+        XCTAssertEqual(entries.last!.spec.kind, .app)
+    }
+
+    func testProfilesKeepAValidActiveProfile() throws {
+        var profiles = DockProfiles(profiles: [], activeID: nil)
+        XCTAssertEqual(profiles.profiles.count, 1)
+        let work = DockProfile(name: "Work", items: [.app(safari)])
+        XCTAssertTrue(profiles.add(work))
+        profiles.setActive(work.id)
+        XCTAssertEqual(profiles.active.name, "Work")
+        profiles.setActive("profile:missing")
+        XCTAssertEqual(profiles.activeID, work.id)
+        profiles.setItems([.share, .share, .app(safari)], of: work.id)
+        XCTAssertEqual(profiles.active.items, [.share, .app(safari)])
+        profiles.rename(work.id, to: "\u{202E}Office")
+        XCTAssertEqual(profiles.active.name, "Office")
+        let decoded = try XCTUnwrap(DockProfiles.decode(profiles.encoded()))
+        XCTAssertEqual(decoded, profiles)
+        profiles.remove(work.id)
+        XCTAssertEqual(profiles.profiles.count, 1)
+        XCTAssertEqual(profiles.activeID, profiles.profiles[0].id)
+        profiles.remove(profiles.activeID)
+        XCTAssertEqual(profiles.profiles.count, 1, "the last profile stays")
+        let hostile = #"{"profiles":[{"id":"nope","name":"x","items":[]},{"id":"profile:ok","name":"","items":[{"type":"share"},{"type":"?"}]}],"activeID":"profile:gone"}"#
+        let cleaned = try XCTUnwrap(DockProfiles.decode(Data(hostile.utf8)))
+        XCTAssertEqual(cleaned.profiles.map(\.id), ["profile:ok"])
+        XCTAssertEqual(cleaned.activeID, "profile:ok")
+        XCTAssertEqual(cleaned.active.items, [.share])
+        XCTAssertEqual(cleaned.active.name, "Profile")
+    }
+
+    func testBackupRoundTrip() throws {
+        var settings = DockSettings()
+        settings.theme = .aurora
+        settings.customTheme = "theme:dusk"
+        let theme = ThemeRecipe.builtIn(.sunset).duplicate(named: "Dusk")
+        let png = Data([0x89, 0x50, 0x4E, 0x47, 1, 2, 3])
+        let backup = MarDockBackup(
+            settings: settings,
+            items: [.app(safari), .newSpacer(), .folder(folder)],
+            themes: [theme, ThemeRecipe.builtIn(.glass)],
+            profiles: DockProfiles(profiles: [DockProfile(name: "Work", items: [.app(safari)])], activeID: nil),
+            icons: [safari.id: png]
+        )
+        XCTAssertEqual(backup.themes, [theme], "built-in themes aren't exported")
+        let decoded = try MarDockBackup.decode(try XCTUnwrap(backup.encoded()))
+        XCTAssertEqual(decoded.settings, settings)
+        XCTAssertEqual(decoded.items, backup.items)
+        XCTAssertEqual(decoded.themes, [theme])
+        XCTAssertEqual(decoded.profiles, backup.profiles)
+        XCTAssertEqual(decoded.icons, [safari.id: png])
+    }
+
+    func testHostileBackupsAreCleanedOrRefused() throws {
+        XCTAssertThrowsError(try MarDockBackup.decode(Data("{}".utf8))) { XCTAssertEqual($0 as? MarDockBackup.ReadError, .notABackup) }
+        XCTAssertThrowsError(try MarDockBackup.decode(Data(#"{"format":"io.github.aliraza47.mardock.backup","version":99}"#.utf8))) {
+            XCTAssertEqual($0 as? MarDockBackup.ReadError, .newerVersion)
+        }
+        let json = """
+        {"format":"io.github.aliraza47.mardock.backup","version":1,
+         "settings":{"iconSize":9999,"customTheme":"theme:../x"},
+         "items":[{"type":"spacer","id":"spacer:a"},{"type":"spacer","id":"bad"},{"type":"app","app":{"bundleIdentifier":"x y","path":"/A.app"}}],
+         "themes":[{"name":"Fine"},"garbage"],
+         "icons":{"app:com.apple.Safari":"iVBORw==","../../evil":"iVBORw==","app:com.x":"AAAA"}}
+        """
+        let backup = try MarDockBackup.decode(Data(json.utf8))
+        XCTAssertEqual(backup.settings.iconSize, DockSettings.iconSizeRange.upperBound)
+        XCTAssertNil(backup.settings.customTheme)
+        XCTAssertEqual(backup.items, [.spacer(id: "spacer:a")])
+        XCTAssertEqual(backup.themes.map(\.name), ["Fine"])
+        XCTAssertEqual(Array(backup.icons.keys), ["app:com.apple.Safari"], "only PNG data under app ids survives")
+    }
+}
+
+final class ThemeListTests: XCTestCase {
+    func testListsDropBuiltInsDuplicatesAndGarbage() throws {
+        let dusk = ThemeRecipe.builtIn(.sunset).duplicate(named: "Dusk")
+        let data = try XCTUnwrap(ThemeRecipe.encodeList([dusk, dusk, ThemeRecipe.builtIn(.glass)]))
+        XCTAssertEqual(ThemeRecipe.decodeList(data), [dusk])
+        XCTAssertEqual(ThemeRecipe.decodeList(Data("[1,{\"name\":\"Ok\"}]".utf8)).map(\.name), ["Ok"])
+        XCTAssertEqual(ThemeRecipe.decodeList(nil), [])
+    }
+}

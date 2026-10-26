@@ -34,7 +34,7 @@ final class AppActions {
             return nil
         case .running:
             return nil
-        case .separator, .trash, .spacer, .divider, .share:
+        case .separator, .trash, .spacer, .divider, .share, .folder:
             return nil
         }
     }

@@ -44,102 +44,49 @@ struct ThemeStyle {
     var swatch: (NSColor, NSColor)
 
     static func style(for theme: ThemeID) -> ThemeStyle {
-        switch theme {
-        case .glass:
-            return ThemeStyle(
-                backdrop: .material(.popover),
-                innerHighlight: 0.22,
-                borderStart: .white.withAlphaComponent(0.55),
-                borderEnd: .white.withAlphaComponent(0.12),
-                specular: 0.16,
-                shadowOpacity: 0.24,
-                swatch: (NSColor(hex: 0xDCE7F7), NSColor(hex: 0x9FB6D9))
-            )
-        case .liquid:
-            return ThemeStyle(
-                backdrop: .liquidGlass(fallback: .fullScreenUI),
-                innerHighlight: 0.32,
-                borderStart: .white.withAlphaComponent(0.75),
-                borderEnd: .white.withAlphaComponent(0.18),
-                borderWidth: 1.2,
-                specular: 0.34,
-                shadowOpacity: 0.18,
-                shadowRadius: 22,
-                cornerFactor: 0.42,
-                swatch: (NSColor(hex: 0xF4FBFF), NSColor(hex: 0xA8D8F0))
-            )
-        case .aurora:
-            return ThemeStyle(
-                backdrop: .material(.hudWindow),
-                appearance: .darkAqua,
-                auroraColors: [NSColor(hex: 0x7B5CFF), NSColor(hex: 0x22C1FF), NSColor(hex: 0x2EF2B5), NSColor(hex: 0xFF5FA8)],
-                auroraOpacity: 0.5,
-                innerHighlight: 0.16,
-                borderStart: .white.withAlphaComponent(0.42),
-                borderEnd: .white.withAlphaComponent(0.06),
-                specular: 0.16,
-                shadowOpacity: 0.32,
-                accent: NSColor(hex: 0xA594FF),
-                swatch: (NSColor(hex: 0x5B3FD9), NSColor(hex: 0x16B8C9))
-            )
-        case .midnight:
-            return ThemeStyle(
-                backdrop: .material(.hudWindow),
-                appearance: .darkAqua,
-                tintColors: [NSColor(hex: 0x050816), NSColor(hex: 0x111A3D)],
-                tintOpacity: 0.62,
-                innerHighlight: 0.07,
-                borderStart: NSColor(hex: 0x00E5FF, alpha: 0.95),
-                borderEnd: NSColor(hex: 0xFF2BD6, alpha: 0.85),
-                borderWidth: 1.2,
-                edgeGlow: NSColor(hex: 0x00E5FF),
-                specular: 0.1,
-                shadowOpacity: 0.4,
-                accent: NSColor(hex: 0x00E5FF),
-                indicatorGlow: 1,
-                swatch: (NSColor(hex: 0x0B1030), NSColor(hex: 0x00B8D4))
-            )
-        case .sunset:
-            return ThemeStyle(
-                backdrop: .material(.popover),
-                tintColors: [NSColor(hex: 0xFFB25B), NSColor(hex: 0xFF6F91), NSColor(hex: 0x9D6BFF)],
-                tintOpacity: 0.42,
-                innerHighlight: 0.26,
-                borderStart: .white.withAlphaComponent(0.62),
-                borderEnd: .white.withAlphaComponent(0.14),
-                specular: 0.18,
-                shadowOpacity: 0.26,
-                accent: NSColor(hex: 0xFF8A5B),
-                swatch: (NSColor(hex: 0xFFB25B), NSColor(hex: 0xB86BFF))
-            )
-        case .mirror:
-            return ThemeStyle(
-                backdrop: .material(.popover),
-                innerHighlight: 0.34,
-                borderStart: .white.withAlphaComponent(0.85),
-                borderEnd: .white.withAlphaComponent(0.25),
-                specular: 0.2,
-                shadowOpacity: 0.22,
-                shadowRadius: 12,
-                reflections: true,
-                floor: true,
-                swatch: (NSColor(hex: 0xE8EEF5), NSColor(hex: 0x7D8FA6))
-            )
-        case .minimal:
-            return ThemeStyle(
-                backdrop: .none,
-                innerHighlight: 0,
-                borderStart: .clear,
-                borderEnd: .clear,
-                borderWidth: 0,
-                specular: 0,
-                shadowOpacity: 0,
-                indicatorGlow: 1,
-                iconShadow: 0.35,
-                separatorOpacity: 0.45,
-                swatch: (NSColor(hex: 0x2B2F36), NSColor(hex: 0x50555E))
-            )
+        ThemeStyle(recipe: .builtIn(theme))
+    }
+
+    /// What the renderer compares to know when to rebuild the glass.
+    static func key(for recipe: ThemeRecipe) -> String {
+        recipe.id + "|" + recipe.glass.rawValue + "|" + recipe.tone.rawValue
+    }
+
+    /// Turns a recipe (built in, or made in the theme editor) into the values
+    /// the renderer uses.
+    init(recipe r: ThemeRecipe) {
+        switch r.glass {
+        case .frosted: backdrop = .material(.popover)
+        case .smoked: backdrop = .material(.hudWindow)
+        case .liquid: backdrop = .liquidGlass(fallback: .fullScreenUI)
+        case .none: backdrop = .none
         }
+        switch r.tone {
+        case .system: appearance = nil
+        case .light: appearance = .aqua
+        case .dark: appearance = .darkAqua
+        }
+        tintColors = r.tint.map(NSColor.init(themeColor:))
+        tintOpacity = Float(r.tintOpacity)
+        auroraColors = r.aurora.map(NSColor.init(themeColor:))
+        auroraOpacity = Float(r.auroraOpacity)
+        innerHighlight = Float(r.innerHighlight)
+        borderStart = NSColor(themeColor: r.borderStart)
+        borderEnd = NSColor(themeColor: r.borderEnd)
+        borderWidth = CGFloat(r.borderWidth)
+        edgeGlow = r.edgeGlow.map(NSColor.init(themeColor:))
+        specular = Float(r.specular)
+        shadowOpacity = Float(r.shadowOpacity)
+        shadowRadius = CGFloat(r.shadowRadius)
+        cornerFactor = CGFloat(r.cornerFactor)
+        accent = r.accent.map(NSColor.init(themeColor:))
+        indicatorGlow = Float(r.indicatorGlow)
+        reflections = r.reflections
+        floor = r.floor
+        iconShadow = Float(r.iconShadow)
+        separatorOpacity = Float(r.separatorOpacity)
+        let swatchColors = r.swatch.count >= 2 ? r.swatch : ThemeRecipe.builtIn(.glass).swatch
+        swatch = (NSColor(themeColor: swatchColors[0]), NSColor(themeColor: swatchColors[1]))
     }
 
     /// The accent colour for indicators, ripples and glows.
@@ -157,5 +104,18 @@ struct ThemeStyle {
         case .teal: return NSColor(hex: 0x40C8E0)
         case .graphite: return NSColor(hex: 0x98989D)
         }
+    }
+}
+
+extension NSColor {
+    convenience init(themeColor c: ThemeColor) {
+        self.init(srgbRed: CGFloat(c.red), green: CGFloat(c.green), blue: CGFloat(c.blue), alpha: CGFloat(c.alpha))
+    }
+}
+
+extension ThemeColor {
+    init(nsColor: NSColor) {
+        let c = nsColor.usingColorSpace(.sRGB) ?? NSColor(srgbRed: 0, green: 0, blue: 0, alpha: 1)
+        self.init(red: Double(c.redComponent), green: Double(c.greenComponent), blue: Double(c.blueComponent), alpha: Double(c.alphaComponent))
     }
 }

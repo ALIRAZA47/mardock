@@ -79,11 +79,17 @@ struct SettingsView: View {
 
 struct AppearancePane: View {
     @EnvironmentObject private var store: SettingsStore
+    @EnvironmentObject private var themes: ThemeStore
+    @State private var editing: ThemeRecipe?
+    @State private var themeMessage: String?
+
+    private let columns = [GridItem(.adaptive(minimum: 118, maximum: 160), spacing: 14)]
 
     var body: some View {
+        let current = themes.recipe(for: store.settings)
         Form {
             Section {
-                DockPreviewCard(settings: store.settings)
+                DockPreviewCard(settings: store.settings, recipe: current)
                     .frame(height: 210)
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.primary.opacity(0.08)))
@@ -93,10 +99,74 @@ struct AppearancePane: View {
             }
 
             Section("Theme") {
-                ThemeGallery(selection: $store.settings.theme)
-                Text(store.settings.theme.tagline)
+                ThemeGallery(selection: current.isBuiltIn ? store.settings.theme : nil) { theme in
+                    store.update {
+                        $0.theme = theme
+                        $0.customTheme = nil
+                    }
+                }
+                Text(current.isBuiltIn ? store.settings.theme.tagline : "Your own theme.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
+            }
+
+            Section {
+                if !themes.custom.isEmpty {
+                    LazyVGrid(columns: columns, spacing: 14) {
+                        ForEach(themes.custom) { recipe in
+                            Button {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                    store.update { $0.customTheme = recipe.id }
+                                }
+                            } label: {
+                                RecipeCard(recipe: recipe, selected: current.id == recipe.id)
+                            }
+                            .buttonStyle(.plain)
+                            .contextMenu {
+                                Button("Edit…") { editing = recipe }
+                                Button("Duplicate") { themes.save(recipe.duplicate(named: recipe.name + " Copy")) }
+                                Button("Export…") { export(recipe) }
+                                Divider()
+                                Button("Delete", role: .destructive) { themes.delete(recipe.id) }
+                            }
+                            .accessibilityLabel(Text("\(recipe.name) theme"))
+                            .accessibilityAddTraits(current.id == recipe.id ? .isSelected : [])
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+                HStack(spacing: 10) {
+                    Button {
+                        editing = current.duplicate(named: current.isBuiltIn ? "My \(current.name)" : current.name + " Copy")
+                    } label: {
+                        Label("New Theme…", systemImage: "plus")
+                    }
+                    if !current.isBuiltIn {
+                        Button {
+                            editing = current
+                        } label: {
+                            Label("Edit Theme…", systemImage: "slider.horizontal.3")
+                        }
+                    }
+                    Button {
+                        importTheme()
+                    } label: {
+                        Label("Import Theme…", systemImage: "square.and.arrow.down")
+                    }
+                    Spacer()
+                }
+                if let themeMessage {
+                    Text(themeMessage).font(.callout).foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("Your themes")
+            } footer: {
+                FooterText("Start from the theme you're using and change the glass, colours, edge and shadows. Themes are small files you can share: right-click one to export it.")
+            }
+            .sheet(item: $editing) { recipe in
+                ThemeEditor(recipe: recipe)
+                    .environmentObject(store)
+                    .environmentObject(themes)
             }
 
             Section("Icons") {
@@ -122,7 +192,7 @@ struct AppearancePane: View {
                 AccentPicker(selection: $store.settings.accent)
                 Toggle("Show app names on hover", isOn: $store.settings.showLabels)
                 Toggle("Reflections", isOn: $store.settings.reflections)
-                    .disabled(store.settings.theme == .mirror || store.settings.position != .bottom)
+                    .disabled(current.reflections || store.settings.position != .bottom)
                 Toggle("Dim icons of hidden apps", isOn: $store.settings.dimHiddenApps)
             }
 
@@ -142,11 +212,44 @@ struct AppearancePane: View {
     }
 }
 
+extension AppearancePane {
+    private func importTheme() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Import"
+        panel.message = "Choose a MarDock theme file."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let recipe = try themes.importTheme(from: url)
+            store.update { $0.customTheme = recipe.id }
+            themeMessage = "Added “\(recipe.name)”."
+        } catch {
+            themeMessage = error.localizedDescription
+        }
+    }
+
+    private func export(_ recipe: ThemeRecipe) {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = recipe.name + ".json"
+        panel.message = "Save this theme as a file you can share."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try themes.export(recipe, to: url)
+        } catch {
+            themeMessage = error.localizedDescription
+        }
+    }
+}
+
 // MARK: - Behaviour
 
 struct BehaviorPane: View {
+    @EnvironmentObject private var coordinator: AppCoordinator
     @EnvironmentObject private var store: SettingsStore
     @EnvironmentObject private var loginItem: LoginItemManager
+    @State private var backupMessage: String?
 
     var body: some View {
         Form {
@@ -223,9 +326,82 @@ struct BehaviorPane: View {
             } header: {
                 Text("Startup")
             }
+
+            Section {
+                HStack(spacing: 10) {
+                    Button {
+                        exportSettings()
+                    } label: {
+                        Label("Export Settings…", systemImage: "square.and.arrow.up")
+                    }
+                    Button {
+                        importSettings()
+                    } label: {
+                        Label("Import Settings…", systemImage: "square.and.arrow.down")
+                    }
+                    Spacer()
+                }
+                if let backupMessage {
+                    Text(backupMessage).font(.callout).foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("Move to another Mac")
+            } footer: {
+                FooterText("Saves your dock, settings, themes and custom icons in one file. Importing replaces them; whether MarDock hides the macOS Dock stays as you set it on each Mac.")
+            }
         }
         .formStyle(.grouped)
         .onAppear { loginItem.refresh() }
+    }
+
+    private func exportSettings() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = "MarDock Settings.json"
+        panel.message = "MarDock saves your dock, settings, themes and custom icons to this file."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard let data = coordinator.makeBackup().encoded() else {
+            backupMessage = "Couldn't put the settings together."
+            return
+        }
+        do {
+            try data.write(to: url, options: .atomic)
+            backupMessage = "Saved to “\(url.lastPathComponent)”."
+        } catch {
+            backupMessage = error.localizedDescription
+        }
+    }
+
+    private func importSettings() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Import"
+        panel.message = "Choose a file saved with Export Settings."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        guard size > 0, size <= MarDockBackup.maxBytes, let data = try? Data(contentsOf: url) else {
+            backupMessage = "That file is empty or too large."
+            return
+        }
+        let backup: MarDockBackup
+        do {
+            backup = try MarDockBackup.decode(data)
+        } catch MarDockBackup.ReadError.newerVersion {
+            backupMessage = "That file comes from a newer MarDock. Update MarDock to import it."
+            return
+        } catch {
+            backupMessage = "That file isn't a MarDock settings file."
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = "Replace your dock and settings?"
+        alert.informativeText = "MarDock will use the \(backup.items.count) items, settings, \(backup.themes.count) themes and \(backup.icons.count) icons in “\(url.lastPathComponent)”."
+        alert.addButton(withTitle: "Replace")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        coordinator.apply(backup)
+        backupMessage = "Imported “\(url.lastPathComponent)”."
     }
 }
 
@@ -656,7 +832,7 @@ struct PrivacyPane: View {
                     title: "App Sandbox",
                     ok: snapshot.sandboxed,
                     detail: snapshot.sandboxed
-                        ? "On. MarDock can't read your files, your other apps' data or anything outside its own container."
+                        ? "On. MarDock can't read your files, your other apps' data or anything outside its own container, except files you pick yourself in an Open or Save panel."
                         : "Off. This looks like a development build run outside its app bundle."
                 )
                 StatusRow(

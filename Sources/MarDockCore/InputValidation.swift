@@ -32,6 +32,13 @@ public enum InputValidation {
         return trimmed.lowercased().hasSuffix(".app")
     }
 
+    /// An absolute path without relative components or control characters.
+    public static func isPlausibleAbsolutePath(_ path: String) -> Bool {
+        guard path.hasPrefix("/"), path.utf8.count <= maxPathLength else { return false }
+        guard !path.unicodeScalars.contains(where: { $0.value < 0x20 || $0.value == 0x7F }) else { return false }
+        return !path.split(separator: "/").contains(where: { $0 == "." || $0 == ".." })
+    }
+
     /// Trims, strips control characters and caps the length of a name we show.
     public static func sanitizedDisplayName(_ name: String) -> String {
         let cleaned = String(String.UnicodeScalarView(name.unicodeScalars.filter { scalar in

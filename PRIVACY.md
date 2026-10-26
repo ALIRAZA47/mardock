@@ -18,7 +18,9 @@ MarDock collects nothing.
   show them in the dock and keep the recent apps list), app
   icons and names, the list of apps in your macOS Dock (once, if you ask it to
   import them) and the size and position of the frontmost app's windows (only
-  in "hide when a window overlaps" mode — never window contents or titles).
+  in "hide when a window overlaps" mode — never window contents or titles),
+  and files you pick yourself in an Open or Save panel (apps to add, images for
+  icons, themes and settings files) — nothing else on your Mac.
 - **Permissions.** None of the privacy-protected permissions (Accessibility,
   Screen Recording, Input Monitoring, Automation, Full Disk Access, Contacts,
   Calendars, Photos, Location, Camera, Microphone) are used or requested.

@@ -4,7 +4,8 @@
   The dock runs in the App Sandbox with the smallest possible set of
   entitlements:
     • no network access (client or server),
-    • no file access except files the user explicitly picks (to add apps),
+    • no file access except files the user explicitly picks in an Open or
+      Save panel (apps to add, images for icons, themes and settings files),
     • no hardened-runtime exceptions (no JIT, no unsigned code, no DYLD tricks).
   scripts/security-audit.sh fails the build if this list ever grows.
 -->
@@ -12,7 +13,7 @@
 <dict>
 	<key>com.apple.security.app-sandbox</key>
 	<true/>
-	<key>com.apple.security.files.user-selected.read-only</key>
+	<key>com.apple.security.files.user-selected.read-write</key>
 	<true/>
 </dict>
 </plist>

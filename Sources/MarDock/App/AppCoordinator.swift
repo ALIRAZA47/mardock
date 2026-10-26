@@ -10,6 +10,7 @@ final class AppCoordinator: NSObject, ObservableObject {
     let pins = PinStore()
     let recents = RecentAppsStore()
     let customIcons = CustomIconStore()
+    let themes = ThemeStore()
     let running = RunningAppsMonitor()
     let icons = IconProvider()
     let shortcuts = LaunchShortcuts()
@@ -31,7 +32,7 @@ final class AppCoordinator: NSObject, ObservableObject {
         systemDock = SystemDockManager(agent: agent)
         actions = AppActions(agent: agent, pins: pins)
         dock = DockController(
-            settings: settings, pins: pins, recents: recents, customIcons: customIcons,
+            settings: settings, pins: pins, recents: recents, customIcons: customIcons, themes: themes,
             running: running, icons: icons, actions: actions, systemDock: systemDock
         )
         security = SecurityStatus(agent: agent)
@@ -174,6 +175,37 @@ final class AppCoordinator: NSObject, ObservableObject {
         }
     }
 
+    // MARK: - Backup
+
+    /// Everything MarDock keeps, for Export Settings.
+    func makeBackup() -> MarDockBackup {
+        var icons: [String: Data] = [:]
+        for id in customIcons.iconIDs {
+            icons[id] = customIcons.pngData(for: id)
+        }
+        return MarDockBackup(settings: settings.settings, items: pins.items, themes: themes.custom, profiles: nil, icons: icons)
+    }
+
+    /// Replaces the dock, settings, themes and icons with a backup's. Choices
+    /// that belong to this Mac (the macOS Dock, which display) stay as they are.
+    func apply(_ backup: MarDockBackup) {
+        for theme in backup.themes {
+            themes.save(theme)
+        }
+        let local = settings.settings
+        var incoming = backup.settings
+        incoming.hideSystemDock = local.hideSystemDock
+        incoming.restoreSystemDockOnQuit = local.restoreSystemDockOnQuit
+        incoming.display = local.display
+        settings.settings = incoming.sanitized()
+        pins.setItems(backup.items)
+        for (id, png) in backup.icons {
+            if let image = NSImage(data: png) {
+                try? customIcons.setIcon(image, for: id)
+            }
+        }
+    }
+
     // MARK: - Windows
 
     func showSettings() {
@@ -183,6 +215,7 @@ final class AppCoordinator: NSObject, ObservableObject {
                 .environmentObject(settings)
                 .environmentObject(pins)
                 .environmentObject(customIcons)
+                .environmentObject(themes)
                 .environmentObject(systemDock)
                 .environmentObject(loginItem)
                 .environmentObject(security)

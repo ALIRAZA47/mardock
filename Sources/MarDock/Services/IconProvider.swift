@@ -70,6 +70,8 @@ final class IconProvider {
             return Self.spacerImage
         case .divider:
             return Self.dividerImage
+        case .folder:
+            return workspace.icon(for: .folder)
         case .running, .separator:
             break
         }
