@@ -30,8 +30,9 @@ access and asks for no special permissions.
 - **Launch bounces** with a touch of squash and stretch, **click ripples**, a
   **poof** when you drag an app off, a **specular highlight** that follows your
   pointer across the glass, and drifting **aurora** colours.
-- **Zero CPU when idle.** Animation runs off the display's refresh only while
-  something moves; ambient effects run in the system's render server.
+- **Practically no CPU when idle.** Animation runs off the display's refresh
+  only while something moves; ambient effects run in the system's render
+  server.
 
 **Looks**
 - Seven themes: **Glass**, **Liquid** (real Liquid Glass on macOS 26),
@@ -95,7 +96,9 @@ Details: [SECURITY.md](SECURITY.md) · [PRIVACY.md](PRIVACY.md)
 ## Requirements
 
 - macOS 14 Sonoma or later (Apple silicon or Intel).
-- To build: Xcode 15 or later (Xcode 26 recommended for Liquid Glass).
+- To build: Xcode 15 or later (Xcode 26 recommended for Liquid Glass), or just
+  the Command Line Tools (`xcode-select --install`) for a build for your Mac's
+  architecture.
 
 ## Build and run
 
@@ -119,6 +122,13 @@ make audit      # security audit of the built app
 make selftest   # end-to-end checks against your system
 make clean
 ```
+
+### Using the build from CI
+
+Every CI run uploads a zipped `MarDock.app` (the **MarDock-app** artifact). It
+is signed ad-hoc, not notarized, so macOS will refuse to open it at first:
+right-click it and choose **Open**, or clear the download flag with
+`xattr -dr com.apple.quarantine MarDock.app`. Building it yourself avoids this.
 
 ### Signing for distribution
 

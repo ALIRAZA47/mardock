@@ -85,7 +85,7 @@ evaluate, or an arbitrary preference key to write.
 | No code injection | Hardened Runtime on both executables, no exception entitlements (library validation stays on) | Audit checks the `runtime` flag and the exact entitlement sets |
 | Least privilege | Sandbox + 1 file entitlement; helper allowlist | Audit (entitlements), self-test (helper refuses unknown keys, out-of-range values, garbage, protected apps, pid mismatches) |
 | Tamper evidence | Signed bundle; helper validates the app and fails closed | Settings ▸ Privacy & Security ▸ Verify App Integrity |
-| Robust parsing | Every external input is bounded and validated: settings, pinned apps, XPC messages, the Dock's plist, dragged files | 57 unit tests incl. hostile inputs |
+| Robust parsing | Every external input is bounded and validated: settings, pinned apps, XPC messages, the Dock's plist, dragged files | Unit tests with hostile inputs |
 | Reversible changes | Original macOS Dock values are saved before hiding and restored on quit | Self-test, manual recovery below |
 | Small supply chain | No third-party dependencies; plain SwiftPM, readable build script | `Package.swift` has no dependencies |
 

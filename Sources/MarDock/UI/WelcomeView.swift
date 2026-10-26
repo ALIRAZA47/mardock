@@ -37,7 +37,7 @@ struct WelcomeView: View {
                     symbol: "sparkles",
                     color: .purple,
                     title: "Fluid and alive",
-                    text: "Physically based magnification, launch bounces and ripples, rendered at your display's full refresh rate — and idle at zero CPU."
+                    text: "Physically based magnification, launch bounces and ripples, rendered at your display's full refresh rate — and close to zero CPU when idle."
                 )
                 FeatureRow(
                     symbol: "paintpalette.fill",

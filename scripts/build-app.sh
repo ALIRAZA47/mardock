@@ -8,7 +8,8 @@
 #   BUNDLE_ID       default io.github.aliraza47.MarDock
 #   VERSION         default 1.0.0
 #   BUILD_NUMBER    default: number of commits
-#   ARCHS           default "arm64 x86_64" (universal)
+#   ARCHS           default "arm64 x86_64" (universal; this Mac's arch when
+#                   only the Command Line Tools are installed)
 #   CONFIGURATION   default release
 #   OUTPUT_DIR      default build
 #   SCRATCH         SwiftPM scratch path, default .build
@@ -20,7 +21,15 @@ SIGN_IDENTITY="${SIGN_IDENTITY:--}"
 BUNDLE_ID="${BUNDLE_ID:-io.github.aliraza47.MarDock}"
 VERSION="${VERSION:-1.0.0}"
 BUILD_NUMBER="${BUILD_NUMBER:-$(git rev-list --count HEAD 2>/dev/null || echo 1)}"
-ARCHS="${ARCHS:-arm64 x86_64}"
+# Universal builds need Xcode's build system; with only the Command Line
+# Tools, build for this Mac's architecture.
+if [[ -z "${ARCHS:-}" ]]; then
+  if xcode-select -p 2>/dev/null | grep -q CommandLineTools; then
+    ARCHS="$(uname -m)"
+  else
+    ARCHS="arm64 x86_64"
+  fi
+fi
 CONFIGURATION="${CONFIGURATION:-release}"
 OUTPUT_DIR="${OUTPUT_DIR:-build}"
 SCRATCH="${SCRATCH:-.build}"
