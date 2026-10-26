@@ -37,6 +37,7 @@ final class AppCoordinator: NSObject, ObservableObject {
         running.start()
         dock.start()
         statusItem = StatusItemController(coordinator: self)
+        installMainMenu()
 
         powerObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.willPowerOffNotification, object: nil, queue: .main
@@ -89,6 +90,35 @@ final class AppCoordinator: NSObject, ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
             MainActor.assumeIsolated { gate.fire() }
         }
+    }
+
+    /// MarDock has no Dock icon, but while its Settings window is in front
+    /// the menu bar should still offer the usual commands and shortcuts.
+    private func installMainMenu() {
+        let main = NSMenu()
+
+        let appMenu = NSMenu(title: "MarDock")
+        appMenu.addItem(ClosureMenuItem("About MarDock") { [weak self] in self?.showAbout() })
+        appMenu.addItem(.separator())
+        let settingsItem = ClosureMenuItem("Settings…") { [weak self] in self?.showSettings() }
+        settingsItem.keyEquivalent = ","
+        appMenu.addItem(settingsItem)
+        appMenu.addItem(.separator())
+        appMenu.addItem(NSMenuItem(title: "Hide MarDock", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h"))
+        appMenu.addItem(NSMenuItem(title: "Quit MarDock", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        let appItem = NSMenuItem()
+        appItem.submenu = appMenu
+        main.addItem(appItem)
+
+        let windowMenu = NSMenu(title: "Window")
+        windowMenu.addItem(NSMenuItem(title: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w"))
+        windowMenu.addItem(NSMenuItem(title: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m"))
+        let windowItem = NSMenuItem()
+        windowItem.submenu = windowMenu
+        main.addItem(windowItem)
+
+        NSApp.mainMenu = main
+        NSApp.windowsMenu = windowMenu
     }
 
     // MARK: - Onboarding

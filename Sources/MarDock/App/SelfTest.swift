@@ -118,10 +118,19 @@ enum SelfTest {
         let garbage = await sendRaw(Data("{\"runShell\":{\"command\":\"id\"}}".utf8))
         check("helper-refuses-garbage", garbage == .failure(.invalidRequest), "\(String(describing: garbage))")
 
-        // 6. Launch, hide and quit a real app.
+        // 6. Hiding the macOS Dock and putting it back exactly as it was.
+        await systemDockRoundTrip(agent: agent)
+        do {
+            try await agent.openTrash()
+            check("open-trash", true)
+        } catch {
+            check("open-trash", false, error.localizedDescription)
+        }
+
+        // 7. Launch, hide and quit a real app.
         await launchHideQuit(agent: agent)
 
-        // 7. The renderer survives a full frame in every theme.
+        // 8. The renderer survives a full frame in every theme.
         renderSmokeTest()
 
         return failures == 0
@@ -189,6 +198,28 @@ enum SelfTest {
             try? await Task.sleep(nanoseconds: 100_000_000)
         }
         return condition()
+    }
+
+    private static func systemDockRoundTrip(agent: AgentClient) async {
+        let suite = "io.github.aliraza47.MarDock.selftest"
+        guard let defaults = UserDefaults(suiteName: suite) else {
+            check("system-dock-hide", false, "no defaults suite")
+            return
+        }
+        defaults.removePersistentDomain(forName: suite)
+        let manager = SystemDockManager(agent: agent, defaults: defaults)
+        await manager.refresh()
+        let before = manager.values
+        let hid = await manager.hide()
+        check("system-dock-hide", hid && manager.looksHidden && manager.isHiddenByMarDock, "\(manager.values)")
+        try? await Task.sleep(nanoseconds: 1_700_000_000) // let the Dock restart (and the helper's limiter) settle
+        let restored = await manager.restore()
+        await manager.refresh()
+        let after = manager.values
+        let same = after["autohide"] == before["autohide"] && after["autohide-delay"] == before["autohide-delay"]
+        check("system-dock-restore", restored && same && !manager.isHiddenByMarDock, "before \(before) after \(after)")
+        defaults.removePersistentDomain(forName: suite)
+        try? await Task.sleep(nanoseconds: 1_700_000_000)
     }
 
     private static func probeHiding(_ app: NSRunningApplication, agent: AgentClient, label: String) async {

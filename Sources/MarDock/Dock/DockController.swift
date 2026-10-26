@@ -622,6 +622,8 @@ extension DockController: DockViewDelegate {
 
         dragSourceID = id
         dragDropHandled = false
+        // The drag session swallows the mouse-up, so the press ends here.
+        pressed = nil
         engine.setPressed(nil)
         engine.setDraggedItem(id, animated: false)
         engine.setDropGap(at: index, animated: false)
@@ -644,6 +646,7 @@ extension DockController: DockViewDelegate {
         guard let id = dragSourceID else { return }
         defer {
             dragSourceID = nil
+            dragDropHandled = false
             updateMouseIgnoring()
             mouse.refresh()
             kick()
@@ -656,8 +659,9 @@ extension DockController: DockViewDelegate {
             rebuild(animated: true)
             engine.setDropGap(at: nil)
             engine.setDraggedItem(nil)
-        } else {
-            // Cancelled: the drag image slides home, then the tile reappears.
+        } else if engine.hasOpenGap {
+            // Cancelled over the dock: the drag image slides home into its
+            // gap, then the tile takes its place.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) { [weak self] in
                 MainActor.assumeIsolated {
                     guard let self, self.dragSourceID == nil else { return }
@@ -665,6 +669,10 @@ extension DockController: DockViewDelegate {
                     self.kick()
                 }
             }
+        } else {
+            // Cancelled away from the dock: the tile grows back in place.
+            engine.setDropGap(at: nil)
+            engine.setDraggedItem(nil)
         }
     }
 
@@ -703,9 +711,7 @@ extension DockController: DockViewDelegate {
     func dockView(_ view: DockView, draggingEnded info: NSDraggingInfo?) {
         externalDropActive = false
         engine.setHighlighted(nil)
-        if !dragDropHandled {
-            engine.setDropGap(at: nil)
-        }
+        engine.setDropGap(at: nil)
         mouse.refresh()
         kick()
     }

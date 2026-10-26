@@ -194,6 +194,9 @@ public final class DockEngine {
 
     public var draggedItemID: String? { draggedID }
 
+    /// True while a drop gap is open (not closing).
+    public var hasOpenGap: Bool { gaps.contains { !$0.closing } }
+
     /// Completes a drop: the dragged (or newly inserted) tile takes the place
     /// of the open gap without any visible jump. Call after `setItems`.
     public func commitDrop(insertedID: String? = nil) {
