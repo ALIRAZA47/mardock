@@ -1,11 +1,12 @@
 name: CI
 
+# No paths filter: this job is a required check on main, and a run that a
+# filter skipped would leave a documentation-only pull request waiting for a
+# check that never comes.
 on:
   push:
     branches: ["**"]  # every branch; a version tag is the Release workflow's job
-    paths-ignore: ["**.md", "docs/**"]
   pull_request:
-    paths-ignore: ["**.md", "docs/**"]
   workflow_dispatch:
 
 # The workflow only needs to read the code.
