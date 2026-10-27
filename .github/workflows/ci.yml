@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    paths-ignore: ["**.md", "docs/**"]
+  pull_request:
+    paths-ignore: ["**.md", "docs/**"]
+  workflow_dispatch:
+
+# The workflow only needs to read the code.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos:
+    name: Build, test, audit and self-test
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Use the newest Xcode
+        run: |
+          latest="$(ls -d /Applications/Xcode_*.app 2>/dev/null | grep -vi beta | sort -V | tail -n 1)"
+          if [ -n "$latest" ]; then sudo xcode-select -s "$latest"; fi
+          xcodebuild -version
+          swift --version
+          sw_vers
+
+      - name: Unit tests
+        run: swift test
+
+      - name: Build MarDock.app (universal, release)
+        run: scripts/build-app.sh
+
+      - name: Security audit
+        run: scripts/security-audit.sh build/MarDock.app
+
+      - name: Build the self-test variant
+        run: |
+          OUTPUT_DIR=build/selftest SCRATCH=.build-selftest ARCHS="$(uname -m)" \
+          SWIFT_FLAGS="-Xswiftc -DMARDOCK_SELFTEST" scripts/build-app.sh
+
+      # Lets the self-test exercise the extras that need Accessibility or
+      # Screen Recording, where the runner allows it (it reports if not).
+      - name: Allow the self-test build Accessibility and Screen Recording
+        run: scripts/ci-grant-permissions.sh build/selftest/MarDock.app
+
+      - name: End-to-end self-test
+        run: scripts/ci-selftest.sh build/selftest/MarDock.app
+
+      - name: Screenshots
+        if: ${{ !cancelled() }}
+        run: scripts/ci-screenshots.sh build/selftest/MarDock.app build/screenshots
+
+      - name: Record a tour of the dock
+        if: ${{ !cancelled() }}
+        run: scripts/ci-record-tour.sh build/selftest/MarDock.app build/tour
+
+      - name: Package
+        run: ditto -c -k --keepParent build/MarDock.app build/MarDock.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MarDock-app
+          path: build/MarDock.zip
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: screenshots
+          path: build/screenshots
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: tour-video
+          path: build/tour
+          if-no-files-found: ignore

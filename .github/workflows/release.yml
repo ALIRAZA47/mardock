@@ -1,0 +1,180 @@
+name: Release
+
+# Pushing a version tag (v1.2.0) builds MarDock, signs it with the Developer
+# ID in this repository's secrets, notarizes it with Apple, and publishes a
+# disk image, a zip and their checksums as a GitHub release, with a build
+# provenance attestation for each. Without the secrets it still publishes,
+# signed ad-hoc and not notarized, and the release notes say so.
+#
+# Run it by hand (Actions ▸ Release ▸ Run workflow) for a test build: the
+# same steps, uploaded as a workflow artifact instead of a release.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version number for the test build"
+        required: true
+        default: "0.0.0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build, sign, notarize and publish
+    runs-on: macos-15
+    timeout-minutes: 60
+    permissions:
+      contents: write     # create the release (tag pushes only)
+      id-token: write     # build provenance
+      attestations: write
+    env:
+      HAS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE != '' && secrets.MACOS_SIGN_IDENTITY != '' }}
+      HAS_NOTARY: ${{ secrets.NOTARY_API_KEY != '' || secrets.NOTARY_APPLE_ID != '' }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0  # the build number is the commit count
+
+      - name: Use the newest Xcode
+        run: |
+          latest="$(ls -d /Applications/Xcode_*.app 2>/dev/null | grep -vi beta | sort -V | tail -n 1)"
+          if [ -n "$latest" ]; then sudo xcode-select -s "$latest"; fi
+          xcodebuild -version
+
+      - name: Work out the version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then version="${GITHUB_REF_NAME#v}"; else version="$INPUT_VERSION"; fi
+          if ! [[ "$version" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]]; then
+            echo "::error::'$version' isn't a version number like 1.2.0"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Version $version; Developer ID: $HAS_CERTIFICATE; notarization: $HAS_NOTARY"
+
+      - name: Unit tests
+        run: swift test
+
+      - name: Import the Developer ID certificate
+        if: env.HAS_CERTIFICATE == 'true'
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: scripts/ci-import-certificate.sh
+
+      - name: Build MarDock.app (universal)
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          SIGN_IDENTITY: ${{ env.HAS_CERTIFICATE == 'true' && secrets.MACOS_SIGN_IDENTITY || '-' }}
+        run: scripts/build-app.sh
+
+      - name: Security audit
+        run: scripts/security-audit.sh build/MarDock.app
+
+      - name: Notarize the app
+        if: env.HAS_CERTIFICATE == 'true' && env.HAS_NOTARY == 'true'
+        env:
+          NOTARY_API_KEY: ${{ secrets.NOTARY_API_KEY }}
+          NOTARY_API_KEY_ID: ${{ secrets.NOTARY_API_KEY_ID }}
+          NOTARY_API_ISSUER: ${{ secrets.NOTARY_API_ISSUER }}
+          NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+          NOTARY_TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
+          NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
+        run: |
+          ditto -c -k --keepParent build/MarDock.app build/notarize.zip
+          scripts/notarize.sh build/notarize.zip build/MarDock.app
+          rm build/notarize.zip
+
+      - name: Package
+        id: package
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          SIGN_IDENTITY: ${{ env.HAS_CERTIFICATE == 'true' && secrets.MACOS_SIGN_IDENTITY || '-' }}
+        run: |
+          mkdir -p dist
+          scripts/make-dmg.sh build/MarDock.app "dist/MarDock-$VERSION.dmg"
+          ditto -c -k --keepParent build/MarDock.app "dist/MarDock-$VERSION.zip"
+
+      - name: Notarize the disk image
+        if: env.HAS_CERTIFICATE == 'true' && env.HAS_NOTARY == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          NOTARY_API_KEY: ${{ secrets.NOTARY_API_KEY }}
+          NOTARY_API_KEY_ID: ${{ secrets.NOTARY_API_KEY_ID }}
+          NOTARY_API_ISSUER: ${{ secrets.NOTARY_API_ISSUER }}
+          NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+          NOTARY_TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
+          NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
+        run: scripts/notarize.sh "dist/MarDock-$VERSION.dmg"
+
+      - name: Check what Gatekeeper will say
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          codesign -dv --verbose=2 build/MarDock.app 2>&1 | grep -E 'Authority|TeamIdentifier|Timestamp|flags' || true
+          spctl --assess --type execute -vv build/MarDock.app || echo "(not accepted by Gatekeeper: ad-hoc or not notarized)"
+          spctl --assess --type open --context context:primary-signature -vv "dist/MarDock-$VERSION.dmg" || true
+          (cd dist && shasum -a 256 MarDock-* > SHA256SUMS.txt && cat SHA256SUMS.txt)
+
+      # Free for public repositories; private ones need GitHub Enterprise
+      # Cloud, so a failure here doesn't stop the release.
+      - name: Record build provenance
+        id: provenance
+        continue-on-error: true
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: "dist/MarDock-*"
+
+      - name: Upload the test build
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: MarDock-${{ steps.version.outputs.version }}
+          path: dist
+
+      - name: Publish the release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          ATTESTED: ${{ steps.provenance.outcome == 'success' }}
+        run: |
+          if [ "$HAS_CERTIFICATE" = true ] && [ "$HAS_NOTARY" = true ]; then
+            signing="Signed with a Developer ID and notarized by Apple: open the disk image and drag MarDock to Applications."
+          else
+            signing="This build is signed ad-hoc and not notarized, so macOS will refuse to open it at first: right-click MarDock and choose **Open**, or run \`xattr -dr com.apple.quarantine /Applications/MarDock.app\`."
+          fi
+          {
+            echo "$signing"
+            echo
+            echo "### Check your download"
+            echo
+            echo '```sh'
+            echo "shasum -a 256 -c SHA256SUMS.txt --ignore-missing"
+            if [ "$ATTESTED" = true ]; then
+              echo "gh attestation verify MarDock-$VERSION.dmg --repo $GITHUB_REPOSITORY"
+            fi
+            echo '```'
+            if [ "$ATTESTED" = true ]; then
+              echo
+              echo "The attestation proves the file was built by this repository's release workflow from tag $GITHUB_REF_NAME."
+            fi
+          } > dist/notes.md
+          gh release create "$GITHUB_REF_NAME" \
+            "dist/MarDock-$VERSION.dmg" "dist/MarDock-$VERSION.zip" dist/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" --title "MarDock $VERSION" --notes-file dist/notes.md --generate-notes --verify-tag
+
+      - name: Remove the signing keychain
+        if: always() && env.HAS_CERTIFICATE == 'true'
+        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
