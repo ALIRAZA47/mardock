@@ -39,7 +39,7 @@ jobs:
       HAS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE != '' && secrets.MACOS_SIGN_IDENTITY != '' }}
       HAS_NOTARY: ${{ secrets.NOTARY_API_KEY != '' || secrets.NOTARY_APPLE_ID != '' }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
           fetch-depth: 0  # the build number is the commit count
@@ -106,6 +106,13 @@ jobs:
           scripts/make-dmg.sh build/MarDock.app "dist/MarDock-$VERSION.dmg"
           ditto -c -k --keepParent build/MarDock.app "dist/MarDock-$VERSION.zip"
 
+      # Nothing after this step signs anything (notarizing, stapling and
+      # attesting don't need the private key), so it goes now rather than
+      # staying unlocked on the runner until the job ends.
+      - name: Remove the signing keychain
+        if: env.HAS_CERTIFICATE == 'true'
+        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db"
+
       - name: Notarize the disk image
         if: env.HAS_CERTIFICATE == 'true' && env.HAS_NOTARY == 'true'
         env:
@@ -132,13 +139,13 @@ jobs:
       - name: Record build provenance
         id: provenance
         continue-on-error: true
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
         with:
           subject-path: "dist/MarDock-*"
 
       - name: Upload the test build
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: MarDock-${{ steps.version.outputs.version }}
           path: dist
@@ -175,6 +182,6 @@ jobs:
             "dist/MarDock-$VERSION.dmg" "dist/MarDock-$VERSION.zip" dist/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" --title "MarDock $VERSION" --notes-file dist/notes.md --generate-notes --verify-tag
 
-      - name: Remove the signing keychain
+      - name: Make sure the signing keychain is gone
         if: always() && env.HAS_CERTIFICATE == 'true'
-        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
+        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" 2>/dev/null || true

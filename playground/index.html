@@ -833,7 +833,7 @@ const hot = window.claude?.hot;
 const saved = hot?.data?.mardock || store.get('mardock-playground') || {};
 const settings = sanitize({ ...DEFAULT_SETTINGS, ...(saved.settings || {}) });
 const scene = { ...DEFAULT_SCENE, ...(saved.scene || {}) };
-const tweaks = saved.tweaks && typeof saved.tweaks === 'object' ? saved.tweaks : {};
+const tweaks = sanitizeTweaks(saved.tweaks);
 let pins = Array.isArray(saved.pins) ? saved.pins.filter(id => APPS[id] && id !== 'finder' && id !== 'trash') : [...DEFAULT_PINS];
 let order = 0;
 const running = new Map([['finder', { active: true, hidden: false, order: order++ }], ['browser', { active: false, hidden: false, order: order++ }], ['music', { active: false, hidden: false, order: order++ }], ['terminal', { active: false, hidden: false, order: order++ }]]);
@@ -848,6 +848,33 @@ function sanitize(s) {
   if (!['off', 'always', 'smart'].includes(s.autoHide)) s.autoHide = 'off';
   if (!['glow', 'dot', 'line', 'none'].includes(s.indicatorStyle)) s.indicatorStyle = 'glow';
   return s;
+}
+// Saved tweaks come back from localStorage, so only what the tuner itself
+// can write survives: finite numbers, colours, the two choices, and null for
+// a glow or accent turned off. Anything else is dropped rather than rendered.
+function sanitizeTweaks(raw) {
+  const out = {};
+  if (!raw || typeof raw !== 'object') return out;
+  const num = v => typeof v === 'number' && Number.isFinite(v) ? v : null;
+  const color = v => num(v) === null ? null : (v & 0xFFFFFF);
+  const colors = v => Array.isArray(v) ? v.map(color).filter(c => c !== null).slice(0, 8) : null;
+  const edge = v => v && typeof v === 'object' && num(v.a) !== null && color(v.hex) !== null ? { hex: color(v.hex), a: clamp(v.a, 0, 1) } : null;
+  for (const [id, tw] of Object.entries(raw)) {
+    if (!Object.hasOwn(THEMES, id) || !tw || typeof tw !== 'object') continue;
+    const clean = {};
+    for (const [k, v] of Object.entries(tw)) {
+      let c = null;
+      if (k === 'backdrop') c = v === 'none' || v === 'liquidGlass' || (typeof v === 'string' && Object.hasOwn(MATERIALS, v)) ? v : null;
+      else if (k === 'appearance') c = v === 'dark' || v === 'light' ? v : null;
+      else if (k === 'borderStart' || k === 'borderEnd') c = edge(v);
+      else if (k === 'tintColors' || k === 'auroraColors') c = colors(v);
+      else if (k === 'edgeGlow' || k === 'accent') { if (v === null) { clean[k] = null; continue; } c = color(v); }
+      else c = num(v);
+      if (c !== null) clean[k] = c;
+    }
+    if (Object.keys(clean).length) out[id] = clean;
+  }
+  return out;
 }
 function persist() {
   const data = { settings, scene, tweaks, pins };
@@ -2099,24 +2126,33 @@ const TUNE_NUMBERS = [
   ['iconShadow', 'Icon shadow', 0, 0.8, 0.01],
   ['separatorOpacity', 'Separator opacity', 0, 1, 0.01],
 ];
+// Tweaks come back from localStorage, so nothing in them goes into the
+// tuner's markup as it is: numbers are coerced and colours rebuilt.
+const numAttr = (v, fallback) => {
+  const n = typeof v === 'number' ? v : typeof v === 'string' ? +v : NaN;
+  return Number.isFinite(n) ? n : fallback;
+};
 function renderTuner() {
   const st = styleFor(settings.theme), t = THEMES[settings.theme];
-  const num = ([k, label, min, max, step], val) => `<div class="row slider"><label for="tw-${k}">${label}</label><span class="val">${(+val).toFixed(step < 1 ? 2 : 0)}</span><input type="range" id="tw-${k}" data-tweak="${k}" min="${min}" max="${max}" step="${step}" value="${val}"></div>`;
-  const colorIn = (key, label, c, i = null) => `<input type="color" data-tweak="${key}"${i != null ? ` data-index="${i}"` : ''} value="${hexStr(c).toLowerCase()}" aria-label="${label}">`;
+  const num = ([k, label, min, max, step], val) => { const v = Math.min(max, Math.max(min, numAttr(val, min))); return `<div class="row slider"><label for="tw-${k}">${label}</label><span class="val">${v.toFixed(step < 1 ? 2 : 0)}</span><input type="range" id="tw-${k}" data-tweak="${k}" min="${min}" max="${max}" step="${step}" value="${v}"></div>`; };
+  const colorIn = (key, label, c, i = null) => `<input type="color" data-tweak="${key}"${i != null ? ` data-index="${i}"` : ''} value="${hexStr(numAttr(c, 0) & 0xFFFFFF).toLowerCase()}" aria-label="${label}">`;
   const backdropOpts = [['none', 'No glass'], ...Object.entries(MATERIALS).map(([k, m]) => [k, m.label])];
   if (st.backdrop === 'liquidGlass') backdropOpts.unshift(['liquidGlass', 'Liquid Glass']);
   let html = `<p class="note">Edits apply to ${t.name} only and map one to one to <code>ThemeStyle</code> in Theme.swift.</p>
     <div class="row"><label for="tw-backdrop">Glass material</label><select id="tw-backdrop" data-tweak="backdrop">${backdropOpts.map(([v, l]) => `<option value="${v}"${st.backdrop === v ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
     <div class="row"><label for="tw-appearance">Glass appearance</label><select id="tw-appearance" data-tweak="appearance"><option value="">Follow the system</option><option value="dark"${st.appearance === 'dark' ? ' selected' : ''}>Always dark</option><option value="light"${st.appearance === 'light' ? ' selected' : ''}>Always light</option></select></div>`;
   html += TUNE_NUMBERS.map(d => num(d, st[d[0]])).join('');
-  html += `<div class="row slider"><label for="tw-borderStartA">Border opacity, inner edge</label><span class="val">${st.borderStart.a.toFixed(2)}</span><input type="range" id="tw-borderStartA" data-tweak="borderStartA" min="0" max="1" step="0.01" value="${st.borderStart.a}"></div>
-    <div class="row slider"><label for="tw-borderEndA">Border opacity, outer edge</label><span class="val">${st.borderEnd.a.toFixed(2)}</span><input type="range" id="tw-borderEndA" data-tweak="borderEndA" min="0" max="1" step="0.01" value="${st.borderEnd.a}"></div>
+  const borderStartA = numAttr(st.borderStart.a, 0), borderEndA = numAttr(st.borderEnd.a, 0);
+  html += `<div class="row slider"><label for="tw-borderStartA">Border opacity, inner edge</label><span class="val">${borderStartA.toFixed(2)}</span><input type="range" id="tw-borderStartA" data-tweak="borderStartA" min="0" max="1" step="0.01" value="${borderStartA}"></div>
+    <div class="row slider"><label for="tw-borderEndA">Border opacity, outer edge</label><span class="val">${borderEndA.toFixed(2)}</span><input type="range" id="tw-borderEndA" data-tweak="borderEndA" min="0" max="1" step="0.01" value="${borderEndA}"></div>
     <div class="row"><span class="lbl">Border colours</span><span class="colors">${colorIn('borderStartHex', 'Inner edge colour', st.borderStart.hex)}${colorIn('borderEndHex', 'Outer edge colour', st.borderEnd.hex)}</span></div>`;
   const tints = st.tintColors.length ? st.tintColors : [0x9AB8FF, 0xC9A6FF];
-  html += `<div class="row slider"><label for="tw-tintOpacity">Tint opacity</label><span class="val">${(st.tintColors.length ? st.tintOpacity : 0).toFixed(2)}</span><input type="range" id="tw-tintOpacity" data-tweak="tintOpacity" min="0" max="1" step="0.01" value="${st.tintColors.length ? st.tintOpacity : 0}"></div>
+  const tintOpacity = numAttr(st.tintColors.length ? st.tintOpacity : 0, 0);
+  html += `<div class="row slider"><label for="tw-tintOpacity">Tint opacity</label><span class="val">${tintOpacity.toFixed(2)}</span><input type="range" id="tw-tintOpacity" data-tweak="tintOpacity" min="0" max="1" step="0.01" value="${tintOpacity}"></div>
     <div class="row"><span class="lbl">Tint colours</span><span class="colors">${tints.map((c, i) => colorIn('tint', `Tint colour ${i + 1}`, c, i)).join('')}</span></div>`;
   if (st.auroraColors.length) {
-    html += `<div class="row slider"><label for="tw-auroraOpacity">Aurora opacity</label><span class="val">${st.auroraOpacity.toFixed(2)}</span><input type="range" id="tw-auroraOpacity" data-tweak="auroraOpacity" min="0" max="1" step="0.01" value="${st.auroraOpacity}"></div>
+    const auroraOpacity = numAttr(st.auroraOpacity, 0);
+    html += `<div class="row slider"><label for="tw-auroraOpacity">Aurora opacity</label><span class="val">${auroraOpacity.toFixed(2)}</span><input type="range" id="tw-auroraOpacity" data-tweak="auroraOpacity" min="0" max="1" step="0.01" value="${auroraOpacity}"></div>
       <div class="row"><span class="lbl">Aurora colours</span><span class="colors">${st.auroraColors.map((c, i) => colorIn('aurora', `Aurora colour ${i + 1}`, c, i)).join('')}</span></div>`;
   }
   html += `<div class="row"><label for="tw-glowOn">Neon edge glow</label><input type="checkbox" class="switch" id="tw-glowOn" data-tweak="glowOn"${st.edgeGlow != null ? ' checked' : ''}></div>`;
@@ -2166,7 +2202,7 @@ const SETTING_NAMES = {
   bounceOnLaunch: 'Bounce on launch', clickRipple: 'Click ripple', reflections: 'Reflections', indicatorStyle: 'Running indicators',
   dimHiddenApps: 'Dim hidden apps', animationSpeed: 'Animation speed',
 };
-const show = v => typeof v === 'number' ? String(+v.toFixed(3)) : typeof v === 'object' && v ? (v.hex !== undefined ? `${hexStr(v.hex)} @ ${+v.a.toFixed(2)}` : Array.isArray(v) ? v.map(h => hexStr(h)).join(' ') : JSON.stringify(v)) : String(v);
+const show = v => typeof v === 'number' ? String(+v.toFixed(3)) : typeof v === 'object' && v ? (v.hex !== undefined ? `${hexStr(numAttr(v.hex, 0) & 0xFFFFFF)} @ ${+numAttr(v.a, 0).toFixed(2)}` : Array.isArray(v) ? v.map(h => hexStr(numAttr(h, 0) & 0xFFFFFF)).join(' ') : JSON.stringify(v)) : String(v);
 function changeList() {
   const out = [];
   for (const k of Object.keys(DEFAULT_SETTINGS)) if (settings[k] !== DEFAULT_SETTINGS[k]) out.push(`${SETTING_NAMES[k]}: ${show(settings[k])} (app default ${show(DEFAULT_SETTINGS[k])})`);

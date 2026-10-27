@@ -120,7 +120,7 @@ final class AgentService: NSObject, MarDockAgentXPC, @unchecked Sendable {
         case .dockBadges:
             guard limiter.allow("badges", every: 0.8) else { return { .failure(.rateLimited) } }
             guard WindowAccess.isTrusted else { return { .failure(.notAllowed) } }
-            guard let dock = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock").first else {
+            guard let dock = DockPreferences.runningDocks().first else {
                 return { .failure(.notFound) }
             }
             let pid = dock.processIdentifier

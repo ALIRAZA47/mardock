@@ -30,11 +30,21 @@ enum DockPreferences {
         return CFPreferencesAppSynchronize(domain)
     }
 
+    /// Where macOS keeps its Dock. Any app can claim the Dock's bundle
+    /// identifier, so the helper only trusts a process running from here.
+    static let dockBundlePath = "/System/Library/CoreServices/Dock.app"
+
+    /// The macOS Dock, if it is running (normally exactly one process).
+    static func runningDocks() -> [NSRunningApplication] {
+        NSRunningApplication.runningApplications(withBundleIdentifier: SystemDockSchema.domain).filter {
+            !$0.isTerminated && $0.bundleURL?.path == dockBundlePath
+        }
+    }
+
     /// The Dock only picks up most preferences when it starts, and launchd
     /// relaunches it immediately — exactly what `killall Dock` does.
     static func restartDock() {
-        for dock in NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock")
-        where dock.processIdentifier > 1 {
+        for dock in runningDocks() where dock.processIdentifier > 1 {
             kill(dock.processIdentifier, SIGTERM)
         }
     }

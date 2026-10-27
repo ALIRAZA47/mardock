@@ -112,7 +112,7 @@ Liquid Glass.</sub>
 | 🧩 **Tiny, locked-down helper** | Quitting or hiding apps and changing the macOS Dock need more than the sandbox allows, so a small XPC helper does exactly that — a handful of allowlisted operations, strictly validated, and it only accepts connections from the exact app it ships in. |
 | 🙅 **No special permissions by default** | Accessibility and Screen Recording only if you turn on the extras that need them; never Input Monitoring, Automation or Full Disk Access. |
 | 📦 **No dependencies** | Pure Swift, AppKit and Core Animation. No third-party code. |
-| ✅ **Verified, not just claimed** | `make audit` checks entitlements, signatures and imported APIs; `make selftest` proves the sandbox blocks the network and the helper refuses what it should. Both run in CI. |
+| ✅ **Verified, not just claimed** | `make audit` checks entitlements, signatures, imported APIs and the sources for anything looked up by name; `make selftest` proves the sandbox blocks the network and the helper refuses what it should. Both run in CI. |
 
 Details: [SECURITY.md](SECURITY.md) · [PRIVACY.md](PRIVACY.md)
 
@@ -158,8 +158,10 @@ make clean
 
 ### Using the build from CI
 
-Every CI run uploads a zipped `MarDock.app` (the **MarDock-app** artifact). It
-is signed ad-hoc, not notarized, so macOS will refuse to open it at first:
+Every CI run uploads a zipped `MarDock.app` (the **MarDock-app** artifact);
+take one from a run on `main`, since a pull request's run builds that pull
+request's code. It is signed ad-hoc, not notarized, so macOS will refuse to
+open it at first:
 right-click it and choose **Open**, or clear the download flag with
 `xattr -dr com.apple.quarantine MarDock.app`. Building it yourself avoids this.
 
