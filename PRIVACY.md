@@ -2,9 +2,16 @@
 
 MarDock collects nothing.
 
-- **No network.** The app has no network entitlement, so macOS blocks it from
-  connecting anywhere. There are no analytics, crash reporters, update checks,
-  accounts or ads.
+- **No network, except updates you ask for.** The dock has no network
+  entitlement, so macOS blocks it from connecting anywhere. There are no
+  analytics, crash reporters, accounts or ads.
+- **Update checks.** Only when you choose Check for Updates, or once a day if
+  you turn that on in Settings ▸ About (it's off). A separate, sandboxed part
+  of MarDock asks GitHub for this repository's latest release and, when you
+  install one, downloads it. The requests carry no identifiers, cookies or
+  settings, but like any connection GitHub sees your IP address and that
+  MarDock is asking; GitHub's privacy statement covers what it does with
+  that.
 - **What it stores.** Your settings, what you keep in your dock (apps,
   spacers, dividers, folders) and in each profile, themes you make, the last
   few apps you brought to the front (for the recent apps section: their names
@@ -12,6 +19,8 @@ MarDock collects nothing.
   sandbox container on your Mac
   (`~/Library/Containers/io.github.aliraza47.MarDock`). Before hiding the macOS
   Dock it also stores the two Dock settings it changes, so it can put them back.
+  For updates it keeps whether the daily check is on, when it last checked
+  and the last version it told you about.
 - **Keyboard shortcuts.** ⌃⌥1–9 are registered as system hot keys: macOS tells
   MarDock when one of those exact combinations is pressed and nothing else.
   MarDock never sees other keystrokes.
@@ -30,7 +39,9 @@ MarDock collects nothing.
   small pictures of the windows of the app you point at, shown and never
   kept or sent anywhere.
 - **Permissions.** Accessibility and Screen Recording only for the extras
-  above, if you turn them on. Input Monitoring, Automation, Full Disk Access,
+  above, if you turn them on, and Automation for Finder the first time you
+  choose Empty Trash (MarDock asks Finder to empty it and can send Finder no
+  other command). Input Monitoring, Full Disk Access,
   Contacts, Calendars, Photos, Location, Camera and Microphone are never used
   or requested.
 

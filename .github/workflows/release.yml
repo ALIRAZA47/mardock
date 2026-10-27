@@ -2,8 +2,9 @@ name: Release
 
 # Pushing a version tag (v1.2.0) builds MarDock, signs it with the Developer
 # ID in this repository's secrets, notarizes it with Apple, and publishes a
-# disk image, a zip and their checksums as a GitHub release, with a build
-# provenance attestation for each. Without the secrets it still publishes,
+# disk image, a zip, an Apple Archive (what MarDock's own updater installs)
+# and their checksums as a GitHub release, with a build provenance
+# attestation for each. Without the secrets it still publishes,
 # signed ad-hoc and not notarized, and the release notes say so.
 #
 # Run it by hand (Actions ▸ Release ▸ Run workflow) for a test build: the
@@ -105,6 +106,8 @@ jobs:
           mkdir -p dist
           scripts/make-dmg.sh build/MarDock.app "dist/MarDock-$VERSION.dmg"
           ditto -c -k --keepParent build/MarDock.app "dist/MarDock-$VERSION.zip"
+          # MarDock's updater installs this one: entries are MarDock.app/…
+          aa archive -d build -subdir MarDock.app -o "dist/MarDock-$VERSION.aar"
 
       # Nothing after this step signs anything (notarizing, stapling and
       # attesting don't need the private key), so it goes now rather than
@@ -179,7 +182,7 @@ jobs:
             fi
           } > dist/notes.md
           gh release create "$GITHUB_REF_NAME" \
-            "dist/MarDock-$VERSION.dmg" "dist/MarDock-$VERSION.zip" dist/SHA256SUMS.txt \
+            "dist/MarDock-$VERSION.dmg" "dist/MarDock-$VERSION.zip" "dist/MarDock-$VERSION.aar" dist/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" --title "MarDock $VERSION" --notes-file dist/notes.md --generate-notes --verify-tag
 
       - name: Make sure the signing keychain is gone

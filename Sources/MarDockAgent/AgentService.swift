@@ -5,55 +5,6 @@ import os
 
 let agentLog = Logger(subsystem: "MarDockAgent", category: "agent")
 
-/// Decides who may talk to the agent: only processes that satisfy the
-/// designated requirement of the app bundle this service is embedded in.
-/// For a Developer ID build that is "same identifier, same team"; for an
-/// ad-hoc local build it is the app's exact code hash. If the containing app
-/// fails signature validation, every connection is refused (fail closed).
-final class ClientGate: @unchecked Sendable {
-    let appURL: URL?
-    let appBundleIdentifier: String?
-    let clientRequirement: String?
-    let reason: String
-
-    init(agentBundleURL: URL = Bundle.main.bundleURL) {
-        // …/MarDock.app/Contents/XPCServices/<agent>.xpc
-        let app = agentBundleURL.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        guard agentBundleURL.pathExtension == "xpc", app.pathExtension == "app" else {
-            appURL = nil
-            appBundleIdentifier = nil
-            clientRequirement = nil
-            reason = "Not embedded in an app bundle"
-            return
-        }
-        appURL = app
-        appBundleIdentifier = Bundle(url: app)?.bundleIdentifier
-        let signature = CodeSignature.inspect(bundleAt: app)
-        if signature.isValid, let requirement = signature.designatedRequirement, !requirement.isEmpty {
-            clientRequirement = requirement
-            reason = "OK"
-        } else {
-            clientRequirement = nil
-            reason = "Containing app failed validation: \(signature.status)"
-        }
-    }
-}
-
-/// Simple per-operation throttle. Only touched on the main queue.
-final class RateLimiter: @unchecked Sendable {
-    private var last: [String: Date] = [:]
-
-    func allow(_ operation: String, every interval: TimeInterval) -> Bool {
-        dispatchPrecondition(condition: .onQueue(.main))
-        let now = Date()
-        if let previous = last[operation], now.timeIntervalSince(previous) < interval {
-            return false
-        }
-        last[operation] = now
-        return true
-    }
-}
-
 final class AgentListenerDelegate: NSObject, NSXPCListenerDelegate {
     private let gate: ClientGate
     private let limiter: RateLimiter
@@ -104,6 +55,33 @@ final class AgentService: NSObject, MarDockAgentXPC, @unchecked Sendable {
                 WindowAccess.queue.async { reply(Self.encode(slow())) }
             } else {
                 reply(Self.encode(self.perform(decoded)))
+            }
+        }
+    }
+
+    func install(_ request: Data, archive: FileHandle, reply: @escaping (Data) -> Void) {
+        guard let decoded = try? AgentWire.decode(AgentRequest.self, from: request),
+              AgentWire.isWellFormed(decoded),
+              case let .installUpdate(version, sha256) = decoded
+        else {
+            agentLog.error("Rejected a malformed install request")
+            reply(Self.encode(.failure(.invalidRequest)))
+            return
+        }
+        DispatchQueue.main.async {
+            guard self.limiter.allow("install", every: 10) else {
+                reply(Self.encode(.failure(.rateLimited)))
+                return
+            }
+            guard let app = self.gate.appURL, let identifier = self.gate.appBundleIdentifier else {
+                reply(Self.encode(.failure(.notAllowed)))
+                return
+            }
+            // Checking signatures and extracting take a few seconds.
+            UpdateInstaller.queue.async {
+                let result = UpdateInstaller.install(archive: archive, version: version, sha256: sha256, appURL: app, bundleIdentifier: identifier)
+                try? archive.close()
+                reply(Self.encode(result))
             }
         }
     }
@@ -231,6 +209,10 @@ final class AgentService: NSObject, MarDockAgentXPC, @unchecked Sendable {
 
         case .dockBadges, .minimizedWindows, .showWindow:
             // Handled by `accessibilityWork(for:)`.
+            return .failure(.invalidRequest)
+
+        case .installUpdate:
+            // Only with its archive, through `install(_:archive:reply:)`.
             return .failure(.invalidRequest)
 
         case .verifyIntegrity:

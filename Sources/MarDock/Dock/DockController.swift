@@ -607,6 +607,47 @@ final class DockController: NSObject {
         actions.setHidden(app, hidden)
     }
 
+    /// True only when the full Trash extra is on and says the Trash is empty.
+    var trashKnownEmpty: Bool {
+        settings.settings.showTrashFull && !extras.trashFull
+    }
+
+    /// Asks Finder to empty the Trash, after the same question Finder asks.
+    func emptyTrash(confirm: Bool) {
+        if confirm {
+            let alert = NSAlert()
+            alert.messageText = "Are you sure you want to permanently erase the items in the Trash?"
+            alert.informativeText = "You can’t undo this action."
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "Empty Trash")
+            alert.addButton(withTitle: "Cancel")
+            alert.buttons[0].hasDestructiveAction = true
+            NSApp.activate()
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+        }
+        Task {
+            switch await TrashEmptier.empty() {
+            case .success:
+                // Finder takes a moment; look again once it's likely done.
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                extras.refreshSoon()
+            case .failure(.notAllowed):
+                let alert = NSAlert()
+                alert.messageText = "MarDock isn’t allowed to empty the Trash"
+                alert.informativeText = "MarDock asks Finder to empty the Trash, which needs your permission. Turn on Finder under MarDock in System Settings ▸ Privacy & Security ▸ Automation."
+                alert.addButton(withTitle: "Open System Settings")
+                alert.addButton(withTitle: "Cancel")
+                NSApp.activate()
+                if alert.runModal() == .alertFirstButtonReturn {
+                    TrashEmptier.openAutomationSettings()
+                }
+            case let .failure(.failed(status)):
+                appLog.error("Couldn't empty the Trash: \(status, privacy: .public)")
+                NSSound.beep()
+            }
+        }
+    }
+
     /// ⌃⌥1 to ⌃⌥9: does what clicking the n-th app does.
     func openShortcutTarget(_ index: Int) {
         let targets = entries.shortcutTargets

@@ -19,6 +19,7 @@ enum AgentClientError: LocalizedError, Equatable {
             case .invalidRequest: return "The request was rejected as invalid."
             case .unsupportedVersion: return "The helper is from a different version of MarDock."
             case .failed: return "The operation failed."
+            case .verificationFailed: return "The update didn't pass MarDock's checks, so nothing was changed."
             }
         case .unexpectedReply: return "The helper sent an unexpected reply."
         }
@@ -104,6 +105,18 @@ final class AgentClient {
         try await expectDone(.showWindow(window))
     }
 
+    // MARK: Updates
+
+    /// Hands a downloaded release to the helper, which checks it again and
+    /// puts it in place of this app.
+    func installUpdate(version: String, sha256: String, archive: FileHandle) async throws {
+        let payload = try AgentWire.encode(AgentRequest.installUpdate(version: version, sha256: sha256))
+        let reply = try await exchange(timeout: 180) { agent, reply in
+            agent.install(payload, archive: archive, reply: reply)
+        }
+        guard case .done = reply else { throw AgentClientError.unexpectedReply }
+    }
+
     // MARK: Transport
 
     private func expectDone(_ request: AgentRequest) async throws {
@@ -112,6 +125,12 @@ final class AgentClient {
 
     func send(_ request: AgentRequest, timeout: TimeInterval = 6) async throws -> AgentReply {
         let payload = try AgentWire.encode(request)
+        return try await exchange(timeout: timeout) { agent, reply in
+            agent.handle(payload, reply: reply)
+        }
+    }
+
+    private func exchange(timeout: TimeInterval, _ call: @escaping (MarDockAgentXPC, @escaping (Data) -> Void) -> Void) async throws -> AgentReply {
         let connection = connect()
         let reply: AgentReply = try await withCheckedThrowingContinuation { continuation in
             let once = ResumeOnce(continuation)
@@ -122,7 +141,7 @@ final class AgentClient {
                 once.resume(throwing: AgentClientError.unavailable("bad proxy"))
                 return
             }
-            agent.handle(payload) { data in
+            call(agent) { data in
                 do {
                     once.resume(returning: try AgentWire.decode(AgentReply.self, from: data))
                 } catch {
@@ -168,7 +187,7 @@ final class AgentClient {
 }
 
 /// Makes sure a continuation is resumed exactly once (reply, error or timeout).
-private final class ResumeOnce<T>: @unchecked Sendable {
+final class ResumeOnce<T>: @unchecked Sendable {
     private var continuation: CheckedContinuation<T, Error>?
     private let lock = NSLock()
 

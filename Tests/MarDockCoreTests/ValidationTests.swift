@@ -429,6 +429,7 @@ final class AgentWireTests: XCTestCase {
             .dockBadges,
             .minimizedWindows,
             .showWindow(WindowInfo(pid: 503, bundleIdentifier: "com.apple.TextEdit", title: "Notes.txt", index: 2)),
+            .installUpdate(version: "1.2.0", sha256: String(repeating: "ab", count: 32)),
         ]
         for request in requests {
             let data = try AgentWire.encode(request)
@@ -465,6 +466,11 @@ final class AgentWireTests: XCTestCase {
         XCTAssertFalse(AgentWire.isWellFormed(.showWindow(WindowInfo(pid: 1, bundleIdentifier: "com.apple.TextEdit", title: "", index: 0))))
         XCTAssertFalse(AgentWire.isWellFormed(.showWindow(WindowInfo(pid: 600, bundleIdentifier: "not a bundle", title: "", index: 0))))
         XCTAssertFalse(AgentWire.isWellFormed(.showWindow(WindowInfo(pid: 600, bundleIdentifier: "com.apple.TextEdit", title: "", index: 4096))))
+        let hash = String(repeating: "ab", count: 32)
+        XCTAssertFalse(AgentWire.isWellFormed(.installUpdate(version: "1.2.0/../../x", sha256: hash)))
+        XCTAssertFalse(AgentWire.isWellFormed(.installUpdate(version: "01.2", sha256: hash)))
+        XCTAssertFalse(AgentWire.isWellFormed(.installUpdate(version: "1.2.0", sha256: String(repeating: "AB", count: 32))))
+        XCTAssertFalse(AgentWire.isWellFormed(.installUpdate(version: "1.2.0", sha256: "abc")))
     }
 
     /// Titles and labels from other apps are cleaned and capped before

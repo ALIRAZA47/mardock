@@ -26,6 +26,7 @@ final class AppCoordinator: NSObject, ObservableObject {
     let extras: ExtrasMonitor
     let dock: DockController
     let security: SecurityStatus
+    let updates: UpdateController
 
     private var statusItem: StatusItemController?
     private var settingsWindow: NSWindow?
@@ -44,6 +45,7 @@ final class AppCoordinator: NSObject, ObservableObject {
             running: running, icons: icons, actions: actions, systemDock: systemDock, extras: extras
         )
         security = SecurityStatus(agent: agent)
+        updates = UpdateController(agent: agent)
         super.init()
         icons.customIcons = customIcons
         icons.folders = folders
@@ -56,6 +58,7 @@ final class AppCoordinator: NSObject, ObservableObject {
         recents.start()
         extras.start()
         dock.start()
+        updates.start()
         shortcuts.onPress = { [weak self] index in self?.dock.openShortcutTarget(index) }
         settings.$settings
             .map(\.launchShortcut)
@@ -109,10 +112,12 @@ final class AppCoordinator: NSObject, ObservableObject {
     }
 
     /// Restores the macOS Dock on quit (unless the Mac is shutting down or
-    /// logging out, in which case MarDock will hide it again at next login).
+    /// logging out, in which case MarDock will hide it again at next login,
+    /// or MarDock is relaunching as a new version, which hides it straight
+    /// away).
     func prepareForTermination(_ done: @escaping @MainActor () -> Void) {
         let s = settings.settings
-        guard s.hideSystemDock, s.restoreSystemDockOnQuit, !isPoweringOff, systemDock.isHiddenByMarDock else {
+        guard s.hideSystemDock, s.restoreSystemDockOnQuit, !isPoweringOff, !updates.isRelaunching, systemDock.isHiddenByMarDock else {
             done()
             return
         }
@@ -134,6 +139,7 @@ final class AppCoordinator: NSObject, ObservableObject {
 
         let appMenu = NSMenu(title: "MarDock")
         appMenu.addItem(ClosureMenuItem("About MarDock") { [weak self] in self?.showAbout() })
+        appMenu.addItem(ClosureMenuItem("Check for Updates…") { [weak self] in self?.checkForUpdates() })
         appMenu.addItem(.separator())
         let settingsItem = ClosureMenuItem("Settings…") { [weak self] in self?.showSettings() }
         settingsItem.keyEquivalent = ","
@@ -240,6 +246,7 @@ final class AppCoordinator: NSObject, ObservableObject {
                 .environmentObject(systemDock)
                 .environmentObject(loginItem)
                 .environmentObject(security)
+                .environmentObject(updates)
             let window = makeWindow(title: "MarDock Settings", size: NSSize(width: 820, height: 600), content: root)
             window.setFrameAutosaveName("MarDockSettings")
             settingsWindow = window
@@ -262,6 +269,14 @@ final class AppCoordinator: NSObject, ObservableObject {
 
     func showAbout() {
         showSettings(pane: .about)
+    }
+
+    func checkForUpdates() {
+        if case let .available(release) = updates.phase {
+            updates.install(release)
+        } else {
+            Task { await updates.check(announce: .always) }
+        }
     }
 
     /// Opens Settings on one of its panes.

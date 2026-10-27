@@ -15,9 +15,9 @@
 MarDock replaces (or sits alongside) the macOS Dock with a dock that moves like
 it's made of something real: physically based magnification, launch bounces,
 ripples, a puff of smoke when you drag an app away, and seven themes from
-frosted glass to aurora and neon. It runs in the App Sandbox with no network
-access and asks for no special permissions unless you turn on an extra that
-needs one.
+frosted glass to aurora and neon. The dock runs in the App Sandbox with no
+network access and asks for no special permissions unless you turn on an extra
+that needs one.
 
 ## Highlights
 
@@ -61,6 +61,12 @@ needs one.
 - **Extras you can turn on**: notification badges and minimized windows by
   the Trash (with Accessibility), window previews on hover (with Screen
   Recording) and a full Trash icon. All off until you switch them on.
+- **Empty Trash** from the Trash's menu (hold ⌥ to skip the question), done by
+  Finder just as the macOS Dock does it.
+- **Updates when you want them**: Check for Updates in the menu bar menu or
+  Settings ▸ About, or a daily check you can turn on. Installing downloads the
+  release, checks it against its published checksum and its signature, swaps
+  it in and relaunches.
 
 **Behaviour**
 - Bottom, left or right; main display or follow the pointer between displays.
@@ -107,12 +113,12 @@ Liquid Glass.</sub>
 | | |
 | --- | --- |
 | 🔒 **App Sandbox** | The dock runs sandboxed: it can't read your files or other apps' data. |
-| 🌐 **No network** | No network entitlement, so macOS blocks every connection. No analytics, ever. |
+| 🌐 **An offline dock** | The dock has no network entitlement, so macOS blocks every connection. No analytics, ever. Update checks run only when you ask (or turn on the daily check), in a separate sandboxed updater that can fetch this repository's GitHub releases and nothing else. |
 | 🛡 **Hardened Runtime** | On every executable, with no exceptions: no code injection, no unsigned libraries. |
 | 🧩 **Tiny, locked-down helper** | Quitting or hiding apps and changing the macOS Dock need more than the sandbox allows, so a small XPC helper does exactly that — a handful of allowlisted operations, strictly validated, and it only accepts connections from the exact app it ships in. |
-| 🙅 **No special permissions by default** | Accessibility and Screen Recording only if you turn on the extras that need them; never Input Monitoring, Automation or Full Disk Access. |
+| 🙅 **No special permissions by default** | Accessibility and Screen Recording only if you turn on the extras that need them; Automation for Finder only when you first choose Empty Trash (the sandbox allows that one command); never Input Monitoring or Full Disk Access. |
 | 📦 **No dependencies** | Pure Swift, AppKit and Core Animation. No third-party code. |
-| ✅ **Verified, not just claimed** | `make audit` checks entitlements, signatures, imported APIs and the sources for anything looked up by name; `make selftest` proves the sandbox blocks the network and the helper refuses what it should. Both run in CI. |
+| ✅ **Verified, not just claimed** | `make audit` checks entitlements, signatures, imported APIs and the sources for anything looked up by name; `make selftest` proves the sandbox blocks the dock's network and the helper refuses what it should, junk updates included. Both run in CI. |
 
 Details: [SECURITY.md](SECURITY.md) · [PRIVACY.md](PRIVACY.md)
 
