@@ -706,7 +706,7 @@ enum DemoMode {
 @MainActor
 final class DemoTour {
     /// How long to record after "TOUR READY": the tour, then a moment's hold.
-    static let seconds = 83
+    static let seconds = 81
     private static var current: DemoTour?
     private static let calculatorBundleIdentifier = "com.apple.calculator"
 
@@ -742,7 +742,10 @@ final class DemoTour {
             await tour.run()
             print(String(format: "TOUR DONE after %.1f s", tour.elapsed))
             fflush(stdout)
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            // Stay until the recording is over (it starts a little after
+            // "TOUR READY"): the pretend desktop goes when the app does.
+            let hold = max(1, Double(seconds) + 3 - tour.elapsed)
+            try? await Task.sleep(nanoseconds: UInt64(hold * 1_000_000_000))
             exit(0)
         }
     }

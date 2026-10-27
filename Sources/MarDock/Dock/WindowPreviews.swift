@@ -151,12 +151,16 @@ final class WindowPreviews {
             .prefix(5)
         var previews: [Preview] = []
         for window in windows {
+            let filter = SCContentFilter(desktopIndependentWindow: window)
             let configuration = SCStreamConfiguration()
             let scale = min(1, 300 / max(window.frame.width, window.frame.height))
-            configuration.width = max(1, Int(window.frame.width * scale * 2))
-            configuration.height = max(1, Int(window.frame.height * scale * 2))
+            let pixelsPerPoint = CGFloat(max(1, filter.pointPixelScale))
+            configuration.width = max(1, Int(window.frame.width * scale * pixelsPerPoint))
+            configuration.height = max(1, Int(window.frame.height * scale * pixelsPerPoint))
+            // Otherwise the window keeps its own size in the picture: cropped
+            // when it's bigger, small in a corner when it's smaller.
+            configuration.scalesToFit = true
             configuration.showsCursor = false
-            let filter = SCContentFilter(desktopIndependentWindow: window)
             guard let image = try? await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration) else { continue }
             let title = InputValidation.sanitizedDisplayName(window.title ?? "")
             previews.append(Preview(id: window.windowID, title: title, image: image, size: CGSize(width: window.frame.width * scale, height: window.frame.height * scale)))
