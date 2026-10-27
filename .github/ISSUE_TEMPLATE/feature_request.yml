@@ -1,0 +1,39 @@
+name: Feature request
+description: An idea for making MarDock better.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks. One check before you write: MarDock stays off the network, never runs scripts or other programs, and asks for no permissions by default, so ideas that need those won't be taken up (CONTRIBUTING.md explains why). Everything else is fair game.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What's the problem?
+      description: What are you trying to do, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like?
+      description: How it would work and look. Sketches, screenshots of other docks or a tweaked playground are all welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What else did you consider?
+      description: Other ways to get there, including things MarDock can already do.
+  - type: dropdown
+    id: permissions
+    attributes:
+      label: Would it need a new permission or system access?
+      description: For example Accessibility, Screen Recording, the network, or reading other apps' data.
+      options:
+        - "No"
+        - "Yes, as an opt-in extra that's off by default"
+        - "Yes, always"
+        - I'm not sure
+    validations:
+      required: true
