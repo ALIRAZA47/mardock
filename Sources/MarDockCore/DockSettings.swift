@@ -160,6 +160,22 @@ public struct DockSettings: Codable, Equatable, Sendable {
         return s
     }
 
+    /// The settings to use after importing a settings file: everything in it
+    /// except the choices that belong to this Mac (the macOS Dock, which
+    /// display) and the extras, which only Settings turns on — so a file can
+    /// never switch on something that uses a permission given here.
+    public func importing(_ imported: DockSettings) -> DockSettings {
+        var s = imported
+        s.hideSystemDock = hideSystemDock
+        s.restoreSystemDockOnQuit = restoreSystemDockOnQuit
+        s.display = display
+        s.showBadges = showBadges
+        s.showMinimizedWindows = showMinimizedWindows
+        s.windowPreviews = windowPreviews
+        s.showTrashFull = showTrashFull
+        return s.sanitized()
+    }
+
     public static let defaults = DockSettings()
 
     static func clamp(_ value: Double, _ range: ClosedRange<Double>, fallback: Double) -> Double {

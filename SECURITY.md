@@ -54,10 +54,14 @@ dock works the same without them.
 | Minimized windows | Accessibility | The helper lists regular apps' minimized windows (title only) and, when you click one, unminimizes and raises it. The pid must belong to the claimed app, never MarDock itself. |
 | Window previews | Screen Recording | The sandboxed app takes small pictures of the windows of the app you point at (ScreenCaptureKit), shows them, and keeps nothing. |
 
-The Accessibility work runs in the helper, which isn't sandboxed; macOS
-attributes it to MarDock, which is what you allow in System Settings. Its
-requests are refused while the permission is missing, and it never reads
-window contents, text fields or anything outside the list above.
+The Accessibility work runs in the helper, which isn't sandboxed. macOS
+records that permission for MarDock.app as a whole (the helper is part of
+that bundle), which is what you allow in System Settings; the sandboxed app
+never calls an Accessibility API itself, and the audit fails if its binary
+ever imports one. The helper's requests are refused while the permission is
+missing, and it never reads window contents, text fields or anything outside
+the list above. Importing a settings file never turns an extra on or off:
+those choices stay as they are on this Mac.
 
 The sandbox correctly forbids two things a dock needs: quitting other apps and
 changing the macOS Dock's preferences (to hide or tune it). Those are done by a
@@ -92,7 +96,7 @@ anything happens:
 | Operation | Validation |
 | --- | --- |
 | Read macOS Dock settings | Only the 15 keys in `SystemDockSchema`; values type-checked. |
-| Change macOS Dock settings | Each key must be in `SystemDockSchema`, with the right type and within range (e.g. `tilesize` 16–128, `mineffect` ∈ genie/scale/suck). No duplicates. Rate limited. The Dock is restarted with `SIGTERM`, at most every 1.5 s. |
+| Change macOS Dock settings | Each key must be in `SystemDockSchema`, with the right type and within range (e.g. `tilesize` 16–128, `mineffect` ∈ genie/scale/suck). No duplicates. Rate limited. The Dock — only the process running from `/System/Library/CoreServices/Dock.app`, whatever else claims its identifier — is restarted with `SIGTERM`, at most every 1.5 s. |
 | List apps in the macOS Dock | Parsed defensively from `persistent-apps`: bundle IDs and paths validated, list capped, nonexistent apps dropped. |
 | Quit an app | The pid must still belong to the claimed bundle ID (pids get reused), it must be a regular foreground app, and never Finder, the Dock, login window, other system UI, MarDock itself or the requesting process. Rate limited. |
 | Hide or show an app | Same pid/bundle-ID/regular-app checks (hiding Finder is allowed, as in the macOS Dock). Rate limited. |
@@ -100,9 +104,9 @@ anything happens:
 | Verify integrity | Re-validates both signatures and reports the result. |
 | Is the Trash full | No parameters; reads the entry count of `~/.Trash` only. Rate limited. |
 | Accessibility status | Says whether MarDock may use Accessibility; can show macOS's request (rate limited). |
-| Read Dock badges | Needs Accessibility. Reads only the macOS Dock's items' badge text and app; labels capped at 8 characters, 64 badges. Rate limited. |
+| Read Dock badges | Needs Accessibility. Reads only the badge text and app of the items of the real macOS Dock (the process running from `/System/Library/CoreServices/Dock.app`); labels capped at 8 characters, 64 badges. Rate limited. |
 | List minimized windows | Needs Accessibility. Regular apps only, never MarDock; titles cleaned and capped at 80 characters, 32 windows. Rate limited. |
-| Bring back a window | Needs Accessibility. Same pid/bundle-ID/regular-app checks as quitting; never MarDock. Unminimizes, raises and brings forward that one window. Rate limited. |
+| Bring back a window | Needs Accessibility. Same pid/bundle-ID/regular-app checks as hiding (raising a window is harmless, so Finder's count too); never MarDock. Unminimizes, raises and brings forward that one window. Rate limited. |
 
 There is no operation that takes a path to open, a command to run, a script to
 evaluate, or an arbitrary preference key to write.
@@ -111,10 +115,10 @@ evaluate, or an arbitrary preference key to write.
 
 | Guarantee | Enforced by | Checked by |
 | --- | --- | --- |
-| No network access | No network entitlement → sandbox denies sockets | Self-test tries to connect and expects `EPERM`; audit fails if either binary imports socket, `URLSession`, Network.framework or similar APIs |
-| No running other code | No `Process`/`NSTask`, `system`, `popen`, `posix_spawn`, `NSAppleScript`, `dlopen` anywhere | Audit scans imported symbols of both binaries (all architectures) |
+| No network access | App: no network entitlement → the sandbox denies sockets. Helper: it isn't sandboxed, so this rests on its small source having no networking code, which the audit checks | Self-test tries to connect from the app and expects `EPERM`; audit fails if either binary imports socket, `URLSession`, Network.framework or similar APIs, or if the sources mention them |
+| No running other code | No `Process`/`NSTask`, `system`, `popen`, `posix_spawn`, `NSAppleScript`, `dlopen` anywhere, and nothing looked up by name (`dlsym`, `NSClassFromString`, selectors from strings) that could hide one | Audit scans imported symbols of both binaries (all architectures) and the sources for lookups by name |
 | No code injection | Hardened Runtime on both executables, no exception entitlements (library validation stays on) | Audit checks the `runtime` flag and the exact entitlement sets |
-| Least privilege | Sandbox + access only to files and folders you pick; helper allowlist; Accessibility and Screen Recording only for extras you turn on | Audit (entitlements), self-test (helper refuses unknown keys, out-of-range values, garbage, protected apps, pid mismatches, and window requests without Accessibility) |
+| Least privilege | Sandbox + access only to files and folders you pick; helper allowlist; Accessibility and Screen Recording only for extras you turn on, and only the helper calls Accessibility | Audit (entitlements, no Accessibility API in the app binary), self-test (helper refuses unknown keys, out-of-range values, garbage, protected apps, pid mismatches, and window requests without Accessibility) |
 | Tamper evidence | Signed bundle; helper validates the app and fails closed | Settings ▸ Privacy & Security ▸ Verify App Integrity |
 | Robust parsing | Every external input is bounded and validated: settings, pinned apps, XPC messages, the Dock's plist, dragged files | Unit tests with hostile inputs |
 | Reversible changes | Original macOS Dock values are saved before hiding and restored on quit | Self-test, manual recovery below |
@@ -155,11 +159,16 @@ killall Dock
   tags (or by hand). It is the only workflow that sees the signing and
   notary secrets and the only one that can write (to create the release).
   It runs the security audit on the exact app it ships, signs it with
-  the Developer ID kept in a throwaway keychain, notarizes the app and
-  the disk image, and publishes SHA-256 checksums and a build provenance
-  attestation (`gh attestation verify`) next to them.
-- The CI workflow runs with read-only permissions and no secrets.
-  For extra supply-chain hardening, pin the actions to commit SHAs.
+  the Developer ID kept in a throwaway keychain (deleted as soon as the
+  disk image is signed, before notarization, attestation and publishing),
+  notarizes the app and the disk image, and publishes SHA-256 checksums
+  and a build provenance attestation (`gh attestation verify`) next to them.
+- The CI workflow runs with read-only permissions and no secrets, and packs
+  the **MarDock-app** artifact straight after the audit, before the
+  self-test, screenshot and tour steps run anything else on the runner.
+- Both workflows pin the actions they use to commit SHAs. Anyone who can
+  push to the repository can push a `v*` tag, so a tag protection rule
+  for `v*` is the way to limit who can cut a release.
 
 ## Reporting a vulnerability
 

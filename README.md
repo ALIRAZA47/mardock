@@ -112,7 +112,7 @@ Liquid Glass.</sub>
 | 🧩 **Tiny, locked-down helper** | Quitting or hiding apps and changing the macOS Dock need more than the sandbox allows, so a small XPC helper does exactly that — a handful of allowlisted operations, strictly validated, and it only accepts connections from the exact app it ships in. |
 | 🙅 **No special permissions by default** | Accessibility and Screen Recording only if you turn on the extras that need them; never Input Monitoring, Automation or Full Disk Access. |
 | 📦 **No dependencies** | Pure Swift, AppKit and Core Animation. No third-party code. |
-| ✅ **Verified, not just claimed** | `make audit` checks entitlements, signatures and imported APIs; `make selftest` proves the sandbox blocks the network and the helper refuses what it should. Both run in CI. |
+| ✅ **Verified, not just claimed** | `make audit` checks entitlements, signatures, imported APIs and the sources for anything looked up by name; `make selftest` proves the sandbox blocks the network and the helper refuses what it should. Both run in CI. |
 
 Details: [SECURITY.md](SECURITY.md) · [PRIVACY.md](PRIVACY.md)
 
@@ -127,10 +127,16 @@ Details: [SECURITY.md](SECURITY.md) · [PRIVACY.md](PRIVACY.md)
 
 Get the disk image from [Releases](https://github.com/ALIRAZA47/mardock/releases),
 open it and drag MarDock to Applications. Each release lists SHA-256
-checksums, and, when the repository's signing secrets are set up, is signed
-with a Developer ID and notarized by Apple. Check a download with
-`shasum -a 256 -c SHA256SUMS.txt --ignore-missing`, and its build provenance
-with `gh attestation verify MarDock-<version>.dmg --repo ALIRAZA47/mardock`.
+checksums; check a download with `shasum -a 256 -c SHA256SUMS.txt --ignore-missing`.
+
+Releases are signed ad-hoc and not notarized unless the repository's signing
+secrets are set up (then they are signed with a Developer ID, notarized by
+Apple, and carry a build provenance you can check with
+`gh attestation verify MarDock-<version>.dmg --repo ALIRAZA47/mardock`).
+The first time you open an ad-hoc build, macOS says it can't verify MarDock:
+click **Done**, open System Settings ▸ Privacy & Security, scroll down to the
+notice about MarDock and click **Open Anyway** — once. Or clear the download
+flag first with `xattr -dr com.apple.quarantine /Applications/MarDock.app`.
 
 ## Build and run
 
@@ -158,9 +164,10 @@ make clean
 
 ### Using the build from CI
 
-Every CI run uploads a zipped `MarDock.app` (the **MarDock-app** artifact). It
-is signed ad-hoc, not notarized, so macOS will refuse to open it at first:
-right-click it and choose **Open**, or clear the download flag with
+Every CI run uploads a zipped `MarDock.app` (the **MarDock-app** artifact);
+take one from a run on `main`, since a pull request's run builds that pull
+request's code. It is signed ad-hoc, not notarized, so it needs the same
+one-time **Open Anyway** step as an ad-hoc release (see Download above), or
 `xattr -dr com.apple.quarantine MarDock.app`. Building it yourself avoids this.
 
 ### Signing for distribution

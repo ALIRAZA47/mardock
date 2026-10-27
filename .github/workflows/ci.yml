@@ -21,7 +21,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
 
@@ -41,6 +41,17 @@ jobs:
 
       - name: Security audit
         run: scripts/security-audit.sh build/MarDock.app
+
+      # The artifact is the exact app the audit passed, packed before the
+      # self-test, screenshot and tour steps run anything else on the runner.
+      - name: Package
+        run: ditto -c -k --keepParent build/MarDock.app build/MarDock.zip
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: MarDock-app
+          path: build/MarDock.zip
+          if-no-files-found: error
 
       - name: Build the self-test variant
         run: |
@@ -63,22 +74,13 @@ jobs:
         if: ${{ !cancelled() }}
         run: scripts/ci-record-tour.sh build/selftest/MarDock.app build/tour
 
-      - name: Package
-        run: ditto -c -k --keepParent build/MarDock.app build/MarDock.zip
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: MarDock-app
-          path: build/MarDock.zip
-          if-no-files-found: error
-
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: ${{ !cancelled() }}
         with:
           name: screenshots
           path: build/screenshots
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: ${{ !cancelled() }}
         with:
           name: tour-video

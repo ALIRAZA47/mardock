@@ -1,7 +1,7 @@
 #!/bin/bash
 # CI only (release workflow): puts the Developer ID certificate into a
-# throwaway keychain for codesign. The runner is discarded afterwards, and
-# the keychain is deleted at the end of the job anyway.
+# throwaway keychain for codesign. The workflow deletes the keychain as soon
+# as the disk image is signed, and the runner is discarded afterwards anyway.
 #
 # Environment: MACOS_CERTIFICATE (base64 of a .p12 export of the
 # "Developer ID Application" certificate and its private key) and

@@ -595,6 +595,37 @@ final class BackupTests: XCTestCase {
         XCTAssertEqual(decoded.icons, [safari.id: png])
     }
 
+    func testImportingKeepsThisMacsChoices() {
+        var local = DockSettings()
+        local.hideSystemDock = true
+        local.display = .followMouse
+        var imported = DockSettings()
+        imported.theme = .aurora
+        imported.iconSize = 9999
+        imported.hideSystemDock = false
+        imported.restoreSystemDockOnQuit = false
+        imported.display = .main
+        imported.showBadges = true
+        imported.showMinimizedWindows = true
+        imported.windowPreviews = true
+        imported.showTrashFull = true
+
+        let result = local.importing(imported)
+        XCTAssertEqual(result.theme, .aurora)
+        XCTAssertEqual(result.iconSize, DockSettings.iconSizeRange.upperBound, "imported values are still sanitized")
+        XCTAssertTrue(result.hideSystemDock)
+        XCTAssertTrue(result.restoreSystemDockOnQuit)
+        XCTAssertEqual(result.display, .followMouse)
+        XCTAssertFalse(result.showBadges, "a settings file never turns an extra on")
+        XCTAssertFalse(result.showMinimizedWindows)
+        XCTAssertFalse(result.windowPreviews)
+        XCTAssertFalse(result.showTrashFull)
+
+        local.showBadges = true
+        imported.showBadges = false
+        XCTAssertTrue(local.importing(imported).showBadges, "nor off")
+    }
+
     func testHostileBackupsAreCleanedOrRefused() throws {
         XCTAssertThrowsError(try MarDockBackup.decode(Data("{}".utf8))) { XCTAssertEqual($0 as? MarDockBackup.ReadError, .notABackup) }
         XCTAssertThrowsError(try MarDockBackup.decode(Data(#"{"format":"io.github.aliraza47.mardock.backup","version":99}"#.utf8))) {

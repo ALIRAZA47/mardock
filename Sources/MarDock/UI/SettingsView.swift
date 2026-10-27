@@ -438,7 +438,7 @@ struct BehaviorPane: View {
         }
         let alert = NSAlert()
         alert.messageText = "Replace your dock and settings?"
-        alert.informativeText = "MarDock will use the \(backup.items.count) items, settings, \(backup.themes.count) themes and \(backup.icons.count) icons in “\(url.lastPathComponent)”."
+        alert.informativeText = "MarDock will use the \(backup.items.count) items, settings, \(backup.themes.count) themes and \(backup.icons.count) icons in “\(url.lastPathComponent)”. Your choices for the macOS Dock, the display and the extras stay as they are."
         alert.addButton(withTitle: "Replace")
         alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }

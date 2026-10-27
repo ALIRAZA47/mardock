@@ -206,17 +206,13 @@ final class AppCoordinator: NSObject, ObservableObject {
     }
 
     /// Replaces the dock, settings, themes and icons with a backup's. Choices
-    /// that belong to this Mac (the macOS Dock, which display) stay as they are.
+    /// that belong to this Mac (the macOS Dock, which display, the extras)
+    /// stay as they are.
     func apply(_ backup: MarDockBackup) {
         for theme in backup.themes {
             themes.save(theme)
         }
-        let local = settings.settings
-        var incoming = backup.settings
-        incoming.hideSystemDock = local.hideSystemDock
-        incoming.restoreSystemDockOnQuit = local.restoreSystemDockOnQuit
-        incoming.display = local.display
-        settings.settings = incoming.sanitized()
+        settings.settings = settings.settings.importing(backup.settings)
         if let saved = backup.profiles {
             profiles.replace(with: saved)
         } else {
