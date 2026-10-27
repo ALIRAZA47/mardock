@@ -150,6 +150,18 @@ public enum AgentWire {
         }
     }
 
+    /// The import reply for as many of `apps` as fit in one message. The
+    /// Dock's list is capped at 100 entries, but that many long paths can
+    /// still exceed `maxMessageSize`, and a reply that doesn't fit helps
+    /// nobody: the Dock's order is kept and entries are dropped from the end.
+    public static func importedApps(fitting apps: [ImportedDockApp]) -> AgentReply {
+        var apps = apps
+        while !apps.isEmpty, (try? encode(AgentReply.importedApps(apps))) == nil {
+            apps.removeLast()
+        }
+        return .importedApps(apps)
+    }
+
     /// Validates a decoded request's parameters before it is acted upon.
     public static func isWellFormed(_ request: AgentRequest) -> Bool {
         switch request {

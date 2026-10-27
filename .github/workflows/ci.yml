@@ -2,6 +2,7 @@ name: CI
 
 on:
   push:
+    branches: ["**"]  # every branch; a version tag is the Release workflow's job
     paths-ignore: ["**.md", "docs/**"]
   pull_request:
     paths-ignore: ["**.md", "docs/**"]
