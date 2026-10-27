@@ -13,6 +13,12 @@ mkdir -p "$OUT"
 defaults write com.apple.dock autohide -bool true
 defaults write com.apple.dock autohide-delay -float 1000
 killall Dock 2>/dev/null || true
+# The self-test opens the Trash in Finder, and that window can flash up when
+# the tour's apps come and go. Relaunch Finder without its old windows
+# (closing them would take Apple Events, and a permission dialog on screen).
+defaults write com.apple.finder ApplePersistenceIgnoreState -bool true
+rm -rf "$HOME/Library/Saved Application State/com.apple.finder.savedState"
+killall Finder 2>/dev/null || true
 defaults write com.apple.universalaccess reduceTransparency -bool false 2>&1 || true
 defaults write com.apple.universalaccess reduceMotion -bool false 2>&1 || true
 echo "reduceMotion: $(defaults read com.apple.universalaccess reduceMotion 2>&1)"
