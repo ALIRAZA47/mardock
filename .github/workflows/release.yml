@@ -160,7 +160,7 @@ jobs:
           if [ "$HAS_CERTIFICATE" = true ] && [ "$HAS_NOTARY" = true ]; then
             signing="Signed with a Developer ID and notarized by Apple: open the disk image and drag MarDock to Applications."
           else
-            signing="This build is signed ad-hoc and not notarized, so macOS will refuse to open it at first: right-click MarDock and choose **Open**, or run \`xattr -dr com.apple.quarantine /Applications/MarDock.app\`."
+            signing="Open the disk image and drag MarDock to Applications. This build is signed ad-hoc and not notarized, so the first time you open it macOS says it can't verify MarDock: click **Done**, then open System Settings ▸ Privacy & Security, scroll down to the notice about MarDock and click **Open Anyway** (once). Or clear the download flag first: \`xattr -dr com.apple.quarantine /Applications/MarDock.app\`."
           fi
           {
             echo "$signing"
