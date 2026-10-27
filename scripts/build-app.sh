@@ -1,6 +1,7 @@
 #!/bin/bash
 # Builds MarDock.app: compiles with SwiftPM, assembles the bundle (app +
-# embedded XPC helper), and signs both with the Hardened Runtime.
+# embedded XPC helper and updater), and signs all three with the Hardened
+# Runtime.
 #
 # Environment (all optional):
 #   SIGN_IDENTITY   "-" for an ad-hoc signature (default), or e.g.
@@ -60,12 +61,14 @@ BIN_DIR="$(swift build -c "$CONFIGURATION" "${ARCH_FLAGS[@]}" --scratch-path "$S
 
 APP="$OUTPUT_DIR/MarDock.app"
 AGENT="$APP/Contents/XPCServices/$BUNDLE_ID.Agent.xpc"
+UPDATER="$APP/Contents/XPCServices/$BUNDLE_ID.Updater.xpc"
 echo "▸ Assembling $APP"
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$AGENT/Contents/MacOS"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$AGENT/Contents/MacOS" "$UPDATER/Contents/MacOS"
 
 cp "$BIN_DIR/MarDock" "$APP/Contents/MacOS/MarDock"
 cp "$BIN_DIR/MarDockAgent" "$AGENT/Contents/MacOS/MarDockAgent"
+cp "$BIN_DIR/MarDockUpdater" "$UPDATER/Contents/MacOS/MarDockUpdater"
 cp App/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 
@@ -74,7 +77,8 @@ substitute() {
 }
 substitute App/Info.plist "$APP/Contents/Info.plist"
 substitute App/Agent-Info.plist "$AGENT/Contents/Info.plist"
-plutil -lint "$APP/Contents/Info.plist" "$AGENT/Contents/Info.plist" >/dev/null
+substitute App/Updater-Info.plist "$UPDATER/Contents/Info.plist"
+plutil -lint "$APP/Contents/Info.plist" "$AGENT/Contents/Info.plist" "$UPDATER/Contents/Info.plist" >/dev/null
 
 echo "▸ Extracting Shortcuts actions"
 extract_app_intents() {
@@ -131,8 +135,10 @@ else
   TIMESTAMP=(--timestamp)
 fi
 # Inside-out: the helper first (Hardened Runtime, no entitlements at all),
-# then the app (Hardened Runtime + App Sandbox).
+# the updater (Hardened Runtime + App Sandbox + outgoing network), then the
+# app (Hardened Runtime + App Sandbox).
 codesign --force --options runtime "${TIMESTAMP[@]}" --sign "$SIGN_IDENTITY" "$AGENT"
+codesign --force --options runtime "${TIMESTAMP[@]}" --entitlements App/Updater.entitlements --sign "$SIGN_IDENTITY" "$UPDATER"
 codesign --force --options runtime "${TIMESTAMP[@]}" --entitlements App/MarDock.entitlements --sign "$SIGN_IDENTITY" "$APP"
 codesign --verify --deep --strict "$APP"
 

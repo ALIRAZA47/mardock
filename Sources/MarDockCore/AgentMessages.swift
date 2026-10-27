@@ -24,6 +24,11 @@ public enum AgentRequest: Codable, Equatable, Sendable {
     /// Brings back one window: unminimizes it if needed, raises it and
     /// activates its app.
     case showWindow(WindowInfo)
+    /// Replaces MarDock.app with the release in the archive sent alongside
+    /// (only through `install(_:archive:reply:)`). The archive must match
+    /// `sha256`, and the app in it must be a validly signed MarDock of
+    /// `version`, newer than this one.
+    case installUpdate(version: String, sha256: String)
 }
 
 public enum AgentReply: Codable, Equatable, Sendable {
@@ -90,6 +95,8 @@ public enum AgentFailure: String, Codable, Error, Sendable {
     case rateLimited
     case failed
     case unsupportedVersion
+    /// An update whose archive or app didn't pass the checks.
+    case verificationFailed
 }
 
 public struct AgentInfo: Codable, Equatable, Sendable {
@@ -127,7 +134,7 @@ public struct IntegrityReport: Codable, Equatable, Sendable {
 
 /// Encoding used on the XPC connection: bounded JSON.
 public enum AgentWire {
-    public static let protocolVersion = 2
+    public static let protocolVersion = 3
     public static let maxMessageSize = 64 * 1024
 
     public enum WireError: Error, Equatable {
@@ -172,6 +179,8 @@ public enum AgentWire {
             return true
         case let .showWindow(window):
             return window.isValid
+        case let .installUpdate(version, sha256):
+            return AppVersion(version)?.description == version && Checksums.isSHA256(sha256)
         case let .applySystemDock(changes, _):
             return SystemDockSchema.isValid(changes)
         case let .quitApp(pid, bundleIdentifier, _), let .setHidden(pid, bundleIdentifier, _):
@@ -185,5 +194,7 @@ public enum AgentWire {
 /// JSON message keeps the surface small and easy to audit.
 @objc public protocol MarDockAgentXPC {
     func handle(_ request: Data, reply: @escaping (Data) -> Void)
+    /// Only for `.installUpdate`, with the downloaded archive as an open file.
+    func install(_ request: Data, archive: FileHandle, reply: @escaping (Data) -> Void)
 }
 #endif

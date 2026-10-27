@@ -35,6 +35,18 @@ public enum CodeSignature {
         return describe(staticCode, status: status)
     }
 
+    /// Whether the bundle at `url` is validly signed (all architectures,
+    /// nested code, strict) and satisfies `requirement`.
+    public static func bundle(at url: URL, satisfies requirement: String) -> Bool {
+        var staticCode: SecStaticCode?
+        var compiled: SecRequirement?
+        guard SecStaticCodeCreateWithPath(url as CFURL, SecCSFlags(), &staticCode) == errSecSuccess, let staticCode,
+              SecRequirementCreateWithString(requirement as CFString, SecCSFlags(), &compiled) == errSecSuccess, let compiled
+        else { return false }
+        let flags = SecCSFlags(rawValue: kSecCSCheckAllArchitectures | kSecCSCheckNestedCode | kSecCSStrictValidate)
+        return SecStaticCodeCheckValidity(staticCode, flags, compiled) == errSecSuccess
+    }
+
     /// Describes the running process's own signature.
     public static func inspectSelf() -> CodeSignatureInfo {
         var code: SecCode?

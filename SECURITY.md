@@ -1,10 +1,11 @@
 # Security
 
 MarDock replaces one of the most-used parts of macOS, so it is built to be
-boring from a security point of view: it can't reach the network, it can't read
-your files, it never runs scripts or other programs, and the one component with
-more power than the sandbox allows can only do a handful of narrowly defined
-things.
+boring from a security point of view: the dock can't reach the network, it
+can't read your files, it never runs scripts or other programs, the one
+component with more power than the sandbox allows can only do a handful of
+narrowly defined things, and the one component that may use the network is
+sandboxed and can only fetch this repository's releases, when you ask.
 
 This document describes the design, what each guarantee rests on, and how to
 check it yourself.
@@ -17,8 +18,17 @@ check it yourself.
 │ • the dock, settings, menus  │                                   │ • embedded in MarDock.app      │
 │ • App Sandbox                │ ◀──────────────────────────────── │ • Hardened Runtime, no         │
 │ • no network entitlement     │        typed replies              │   entitlements                 │
-│ • Hardened Runtime           │                                   │ • 12 allowlisted operations    │
+│ • Hardened Runtime           │                                   │ • 13 allowlisted operations    │
 └──────────────────────────────┘                                   └───────────────────────────────┘
+               │  XPC: "latest release?" / "download version x"
+               ▼
+┌──────────────────────────────┐
+│ MarDock Updater (.xpc)       │   HTTPS, GET only, to this repository's releases on GitHub
+│ • embedded in MarDock.app    │ ─────────────────────────────────────────────────────────▶
+│ • App Sandbox + outgoing     │
+│   network, nothing else      │
+│ • Hardened Runtime           │
+└──────────────────────────────┘
 ```
 
 The dock itself — all of the UI, drag and drop, icon decoding, preferences —
@@ -29,11 +39,17 @@ runs inside the **App Sandbox**. Its only entitlements are:
 | `com.apple.security.app-sandbox` | Confines the process. |
 | `com.apple.security.files.user-selected.read-write` | Lets MarDock open or save the files you pick in an Open or Save panel (apps to add, images for icons, theme and settings files), and nothing else. |
 | `com.apple.security.files.bookmarks.app-scope` | Lets MarDock remember a folder you chose to keep in the dock (a read-only security-scoped bookmark), so it can list that folder's newest files after a restart. |
+| `com.apple.security.automation.apple-events` | Lets the app send Apple Events at all (the Hardened Runtime blocks them otherwise)… |
+| `com.apple.security.scripting-targets` | …and limits them to Finder's `com.apple.finder.trash` group: **Empty Trash** is the only command the sandbox lets MarDock send, to Finder only. macOS also asks you before the first one. |
 
 There is no network entitlement, so the sandbox refuses every socket the app
 could open. MarDock asks for no Accessibility or Screen Recording permission
-unless you turn on one of the extras below, and never for Input Monitoring,
-Automation or Full Disk Access.
+unless you turn on one of the extras below, Automation for Finder only when you
+first choose Empty Trash, and never for Input Monitoring or Full Disk Access.
+
+**Empty Trash** works like the macOS Dock's: MarDock asks Finder to empty the
+Trash, after the same question Finder asks (hold ⌥ to skip it), and Finder
+does the work. Nothing in the Trash is read or deleted by MarDock itself.
 
 **Shortcuts actions** (switch profile, set the theme, position, hiding or
 magnification, open Settings) and the **Focus filter** run inside the same
@@ -106,18 +122,49 @@ anything happens:
 | Accessibility status | Says whether MarDock may use Accessibility; can show macOS's request (rate limited). |
 | Read Dock badges | Needs Accessibility. Reads only the badge text and app of the items of the real macOS Dock (the process running from `/System/Library/CoreServices/Dock.app`); labels capped at 8 characters, 64 badges. Rate limited. |
 | List minimized windows | Needs Accessibility. Regular apps only, never the parts of macOS that can't be quit (Finder included) and never MarDock; titles cleaned and capped at 80 characters, 32 windows. Rate limited. |
+| Install an update | Only through its own XPC entry point, with the downloaded archive passed as an open file. The version must be well formed and newer than the installed copy; the archive is copied into a file only the helper writes, and the copy must match the SHA-256 the release published; every entry must be a plain file or folder inside `MarDock.app/` (no links, no `..`); the extracted app must have the same bundle identifier and exactly that version, and be validly signed (strict, all architectures, nested code) with the Hardened Runtime — and, when the installed copy is signed with a Developer ID, satisfy its designated requirement (same team). Only the app the helper is embedded in is replaced, never a path from the request, and not from a read-only volume or App Translocation. Rate limited. |
 | Bring back a window | Needs Accessibility. Same pid/bundle-ID/regular-app checks as quitting, so never Finder, other system UI or MarDock. Unminimizes, raises and brings forward that one window. Rate limited. |
 
 There is no operation that takes a path to open, a command to run, a script to
 evaluate, or an arbitrary preference key to write.
 
+## The updater
+
+Update checks are the one thing that needs the network, so they live in their
+own XPC service rather than in the dock:
+
+- **Sandboxed**, with outgoing network connections as its only other
+  entitlement. It can't read your files or the dock's data.
+- **Only GitHub, only this repository.** Every URL is built from constants
+  (`UpdateSource` in [`Updates.swift`](Sources/MarDockCore/Updates.swift)) and a
+  version that must look like `1.2.3`: the latest-release description from
+  GitHub's API, and a release's `SHA256SUMS.txt` and `MarDock-<version>.aar`.
+  HTTPS only; redirects are followed only to GitHub's own hosts; replies are
+  size-capped. No cookies, cache, credentials or identifying headers.
+- **Only when you ask.** Check for Updates (menu bar menu, Settings ▸ About),
+  or once a day if you turn that on. It's off by default, and importing a
+  settings file can't turn it on.
+- **Can't install anything.** It downloads the archive into its own container,
+  checks it against the release's checksum, and hands it to the app as an
+  open file. The helper then checks it again (see *Install an update* above)
+  before replacing MarDock.app, and the app relaunches.
+- **Who can talk to it.** launchd lets only the containing app look it up.
+  Being sandboxed, it can't read that app to pin its exact signature, so it
+  requires the app's identifier and, for Developer ID builds, the same team.
+
+For ad-hoc builds there's no developer signature to compare, so what vouches
+for an update is the checksum published with the release on GitHub — the same
+trust as downloading it by hand. Developer ID builds also require the update
+to be signed by the same team.
+
 ## Guarantees and how they are enforced
 
 | Guarantee | Enforced by | Checked by |
 | --- | --- | --- |
-| No network access | App: no network entitlement → the sandbox denies sockets. Helper: it isn't sandboxed, so this rests on its small source having no networking code, which the audit checks | Self-test tries to connect from the app and expects `EPERM`; audit fails if either binary imports socket, `URLSession`, Network.framework or similar APIs, or if the sources mention them |
-| No running other code | No `Process`/`NSTask`, `system`, `popen`, `posix_spawn`, `NSAppleScript`, `dlopen` anywhere, and nothing looked up by name (`dlsym`, `NSClassFromString`, selectors from strings) that could hide one | Audit scans imported symbols of both binaries (all architectures) and the sources for lookups by name |
-| No code injection | Hardened Runtime on both executables, no exception entitlements (library validation stays on) | Audit checks the `runtime` flag and the exact entitlement sets |
+| An offline dock | App: no network entitlement → the sandbox denies sockets. Helper: it isn't sandboxed, so this rests on its small source having no networking code, which the audit checks. Updater: sandboxed, network to GitHub's release hosts only by construction | Self-test tries to connect from the app and expects `EPERM`; audit fails if the app or helper imports socket, `URLSession`, Network.framework or similar APIs, or if any sources but the updater's mention them, and checks each executable's exact entitlements |
+| Updates are genuine | Release checksum checked by the updater and again by the helper; archive contents, identity, version and signature checked before anything is replaced | Unit tests (versions, checksums, archive paths, release parsing); self-test (helper refuses junk archives and installs without one) |
+| No running other code | No `Process`/`NSTask`, `system`, `popen`, `posix_spawn`, `NSAppleScript`, `dlopen` anywhere, and nothing looked up by name (`dlsym`, `NSClassFromString`, selectors from strings) that could hide one. The only Apple Event is Finder's Empty Trash, limited by the sandbox | Audit scans imported symbols of all three binaries (all architectures), the sources for lookups by name, and the app's scripting targets |
+| No code injection | Hardened Runtime on all three executables, no exception entitlements (library validation stays on) | Audit checks the `runtime` flag and the exact entitlement sets |
 | Least privilege | Sandbox + access only to files and folders you pick; helper allowlist; Accessibility and Screen Recording only for extras you turn on, and only the helper calls Accessibility | Audit (entitlements, no Accessibility API in the app binary), self-test (helper refuses unknown keys, out-of-range values, garbage, protected apps, pid mismatches, and window requests without Accessibility) |
 | Tamper evidence | Signed bundle; helper validates the app and fails closed | Settings ▸ Privacy & Security ▸ Verify App Integrity |
 | Robust parsing | Every external input is bounded and validated: settings, pinned apps, XPC messages, the Dock's plist, dragged files | Unit tests with hostile inputs |
@@ -128,7 +175,7 @@ evaluate, or an arbitrary preference key to write.
 
 ```sh
 make audit      # entitlements, Hardened Runtime, signatures, imported APIs, bundle contents
-make selftest   # runs the sandbox/helper/network checks against your real system
+make selftest   # runs the sandbox/helper/network/update checks against your real system
 swift test      # engine, validation and protocol tests
 ```
 
@@ -163,6 +210,8 @@ killall Dock
   disk image is signed, before notarization, attestation and publishing),
   notarizes the app and the disk image, and publishes SHA-256 checksums
   and a build provenance attestation (`gh attestation verify`) next to them.
+  The `.aar` it publishes is the same app, packed with `aa archive`, for
+  MarDock's updater.
 - The CI workflow runs with read-only permissions and no secrets, and packs
   the **MarDock-app** artifact straight after the audit, before the
   self-test, screenshot and tour steps run anything else on the runner.

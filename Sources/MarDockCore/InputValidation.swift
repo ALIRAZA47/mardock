@@ -49,6 +49,18 @@ public enum InputValidation {
         return String(trimmed.prefix(maxDisplayNameLength - 1)) + "…"
     }
 
+    /// Release notes we show as plain text: control and format characters
+    /// removed (newlines and tabs kept), trimmed and capped.
+    public static func sanitizedNotes(_ notes: String, limit: Int = UpdateSource.maxNotesLength) -> String {
+        let cleaned = String(String.UnicodeScalarView(notes.unicodeScalars.filter { scalar in
+            scalar == "\n" || scalar == "\t"
+                || !(scalar.value < 0x20 || (0x7F...0x9F).contains(scalar.value) || scalar.properties.generalCategory == .format)
+        }))
+        let trimmed = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.count <= limit { return trimmed }
+        return String(trimmed.prefix(limit - 1)) + "…"
+    }
+
     /// Path of a `file://` URL string as stored by the macOS Dock.
     public static func appPath(fromFileURLString string: String) -> String? {
         guard string.utf8.count <= maxPathLength * 3,

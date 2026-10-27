@@ -37,6 +37,23 @@ enum DockMenus {
             menu.addItem(ClosureMenuItem("Open", symbol: "trash") { [weak controller] in
                 controller?.activate(entry, modifiers: [])
             })
+            // As in Finder: holding ⌥ empties it without asking first.
+            let empty = ClosureMenuItem("Empty Trash…", symbol: "trash.slash") { [weak controller] in
+                controller?.emptyTrash(confirm: true)
+            }
+            empty.keyEquivalentModifierMask = []
+            let emptyNow = ClosureMenuItem("Empty Trash", symbol: "trash.slash") { [weak controller] in
+                controller?.emptyTrash(confirm: false)
+            }
+            emptyNow.keyEquivalentModifierMask = .option
+            emptyNow.isAlternate = true
+            // Only known to be empty while the full Trash extra is on.
+            let knownEmpty = controller.trashKnownEmpty
+            empty.isEnabled = !knownEmpty
+            emptyNow.isEnabled = !knownEmpty
+            menu.addItem(.separator())
+            menu.addItem(empty)
+            menu.addItem(emptyNow)
             return menu
         case .separator:
             return menu

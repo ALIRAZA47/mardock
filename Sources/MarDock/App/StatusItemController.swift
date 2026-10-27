@@ -62,6 +62,19 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.addItem(ClosureMenuItem("About MarDock", symbol: "info.circle") { [weak coordinator] in
             coordinator?.showAbout()
         })
+        let updates = coordinator.updates
+        let updateTitle: String
+        switch updates.phase {
+        case let .available(release): updateTitle = release.installable ? "Install MarDock \(release.version)…" : "MarDock \(release.version) Is Available…"
+        case .checking: updateTitle = "Checking for Updates…"
+        case .downloading, .installing, .relaunching: updateTitle = "Installing Update…"
+        default: updateTitle = "Check for Updates…"
+        }
+        let updateItem = ClosureMenuItem(updateTitle, symbol: "arrow.down.circle") { [weak coordinator] in
+            coordinator?.checkForUpdates()
+        }
+        updateItem.isEnabled = !updates.phase.isBusy
+        menu.addItem(updateItem)
         menu.addItem(.separator())
         let quit = ClosureMenuItem("Quit MarDock", symbol: "power") { NSApp.terminate(nil) }
         quit.keyEquivalent = "q"

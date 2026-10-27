@@ -956,6 +956,7 @@ struct SystemDockDraft: Equatable {
 
 struct PrivacyPane: View {
     @EnvironmentObject private var security: SecurityStatus
+    @EnvironmentObject private var updates: UpdateController
     @EnvironmentObject private var store: SettingsStore
     @EnvironmentObject private var extras: ExtrasMonitor
 
@@ -969,7 +970,7 @@ struct PrivacyPane: View {
                         .shadow(color: .green.opacity(0.3), radius: 8, y: 3)
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Private and secure by design").font(.title3.weight(.semibold))
-                        Text("MarDock never connects to the internet, collects nothing, and needs no special permissions unless you turn on an extra that does. Everything below is read live from macOS — not just claimed.")
+                        Text("The dock never connects to the internet, MarDock collects nothing, and it needs no special permissions unless you use something that does. Everything below is read live from macOS — not just claimed.")
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -991,7 +992,14 @@ struct PrivacyPane: View {
                     ok: !snapshot.networkEntitled,
                     detail: snapshot.networkEntitled
                         ? "This build is entitled to use the network."
-                        : "None. MarDock has no network entitlement, so the sandbox blocks every connection."
+                        : "None. The dock has no network entitlement, so the sandbox blocks every connection."
+                )
+                StatusRow(
+                    title: "Update checks",
+                    ok: true,
+                    detail: updates.checksAutomatically
+                        ? "Once a day, and when you choose Check for Updates. A separate sandboxed updater asks GitHub for MarDock’s newest release; it can reach nothing else and sends nothing about you."
+                        : "Only when you choose Check for Updates. A separate sandboxed updater asks GitHub for MarDock’s newest release; it can reach nothing else and sends nothing about you."
                 )
                 StatusRow(title: "Code signature", ok: snapshot.signature.isValid, detail: signatureText(snapshot.signature))
                 StatusRow(
@@ -1016,7 +1024,7 @@ struct PrivacyPane: View {
                 StatusRow(
                     title: "What the helper may do",
                     ok: true,
-                    detail: "Quit, hide or show an app you choose, change the 15 macOS Dock settings listed in this window, read which apps are in your macOS Dock, open the Trash and say whether it's empty. With Accessibility allowed for the extras you turn on, it also reads the macOS Dock's badges and the titles of minimized windows, and brings back the window you click. Every request is validated; anything else is refused."
+                    detail: "Quit, hide or show an app you choose, change the 15 macOS Dock settings listed in this window, read which apps are in your macOS Dock, open the Trash and say whether it's empty, and install an update you chose once it has checked the download and its signature. With Accessibility allowed for the extras you turn on, it also reads the macOS Dock's badges and the titles of minimized windows, and brings back the window you click. Every request is validated; anything else is refused."
                 )
                 HStack {
                     Button {
@@ -1057,7 +1065,12 @@ struct PrivacyPane: View {
                         ? (extras.screenRecordingAllowed ? "Allowed, for window previews, which you turned on. Pictures are taken only while you point at an app, and never kept." : "Not allowed yet; window previews need it.")
                         : "Not used. Only window previews need it, and they're off."
                 )
-                Text("Never asked for: Input Monitoring · Full Disk Access · Automation · Contacts, Calendars, Photos, Location, Camera and Microphone")
+                StatusRow(
+                    title: "Automation",
+                    ok: true,
+                    detail: "Only for Finder, and only the first time you choose Empty Trash: MarDock asks Finder to empty it, as the macOS Dock does. The sandbox lets MarDock send Finder that command and no other."
+                )
+                Text("Never asked for: Input Monitoring · Full Disk Access · Contacts, Calendars, Photos, Location, Camera and Microphone")
                     .foregroundStyle(.secondary)
             } header: {
                 Text("Permissions")
@@ -1066,7 +1079,7 @@ struct PrivacyPane: View {
             }
 
             Section("Your data") {
-                Text("Your settings, what you keep in your dock, the recent apps list and any icons you pick are stored only on this Mac, inside MarDock’s sandbox container. No analytics, no crash reporting, no update checks, no accounts.")
+                Text("Your settings, what you keep in your dock, the recent apps list and any icons you pick are stored only on this Mac, inside MarDock’s sandbox container. No analytics, no crash reporting, no accounts, and no update checks unless you ask for one or turn on the daily check.")
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -1105,6 +1118,8 @@ struct PrivacyPane: View {
 // MARK: - About
 
 struct AboutPane: View {
+    @EnvironmentObject private var updates: UpdateController
+
     var body: some View {
         VStack(spacing: 14) {
             Spacer(minLength: 20)
@@ -1120,13 +1135,79 @@ struct AboutPane: View {
                 .font(.title3)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
-            Text("Built with Swift, AppKit and Core Animation. No third-party code, no network access.")
+            Text("Built with Swift, AppKit and Core Animation. No third-party code. The dock itself has no network access.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
+            UpdatesBox()
+                .padding(.horizontal, 60)
+                .padding(.top, 8)
             Spacer(minLength: 20)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// Check for Updates, the daily check, and an available update.
+private struct UpdatesBox: View {
+    @EnvironmentObject private var updates: UpdateController
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                status
+                Spacer()
+                action
+            }
+            Toggle("Check for updates once a day", isOn: $updates.checksAutomatically)
+            Text("Checking asks GitHub for MarDock’s newest release and sends nothing about you. A separate, sandboxed part of MarDock does it; the dock itself stays offline. Updates are checked against the release’s checksums and signature before they’re installed.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    @ViewBuilder private var status: some View {
+        switch updates.phase {
+        case .idle:
+            Label(lastCheckedText ?? "Not checked yet", systemImage: "arrow.down.circle")
+        case .checking:
+            HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Checking…") }
+        case .upToDate:
+            Label("Up to date" + (lastCheckedText.map { " · \($0)" } ?? ""), systemImage: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+        case let .available(release):
+            Label("MarDock \(release.version) is available", systemImage: "sparkles")
+                .foregroundStyle(.blue)
+        case .downloading:
+            HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Downloading…") }
+        case .installing:
+            HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Checking and installing…") }
+        case .relaunching:
+            HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Relaunching…") }
+        case let .failed(message):
+            Label(message, systemImage: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    @ViewBuilder private var action: some View {
+        if case let .available(release) = updates.phase {
+            Button("Release Notes") { updates.openReleasePage(release) }
+            Button(release.installable ? "Install and Relaunch" : "Download…") { updates.install(release) }
+                .buttonStyle(.borderedProminent)
+        } else {
+            Button("Check Now") { Task { await updates.check(announce: .never) } }
+                .disabled(updates.phase.isBusy)
+        }
+    }
+
+    private var lastCheckedText: String? {
+        guard let date = updates.lastChecked else { return nil }
+        return "checked " + date.formatted(.relative(presentation: .named))
     }
 }

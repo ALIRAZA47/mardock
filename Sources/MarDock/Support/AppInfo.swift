@@ -11,6 +11,9 @@ enum AppInfo {
     /// The XPC helper is named after the app's own bundle identifier.
     static var agentServiceName: String { bundleIdentifier + ".Agent" }
 
+    /// So is the updater, the only part of MarDock with network access.
+    static var updaterServiceName: String { bundleIdentifier + ".Updater" }
+
     static var version: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
     }

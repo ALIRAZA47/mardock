@@ -49,7 +49,7 @@ struct WelcomeView: View {
                     symbol: "lock.shield.fill",
                     color: .green,
                     title: "Secure by design",
-                    text: "Runs in the App Sandbox with no network access and no special permissions. A tiny, locked-down helper does the few things the sandbox can't."
+                    text: "The dock runs in the App Sandbox with no network access and no special permissions. A tiny, locked-down helper does the few things the sandbox can't."
                 )
 
                 Divider().padding(.vertical, 2)

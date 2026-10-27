@@ -4,10 +4,12 @@
 // `--self-test` runs end-to-end checks of the security design against the real
 // system: the sandbox is on and blocks the network, the helper accepts us and
 // refuses anything outside its allowlist, and app launching/quitting works.
+// `--self-test-updates` runs only the update checks, which change nothing.
 // `--demo` shows a dock with a given theme and a simulated pointer, so CI can
 // take screenshots.
 
 import AppKit
+import CryptoKit
 import MarDockCore
 import SwiftUI
 import UniformTypeIdentifiers
@@ -22,6 +24,17 @@ enum SelfTest {
                 print("SELFTEST RESULT \(passed ? "PASS" : "FAIL")")
                 fflush(stdout)
                 exit(passed ? 0 : 1)
+            }
+            return true
+        }
+        if arguments.contains("--self-test-updates") {
+            // Only the update checks: nothing here changes the Mac.
+            application.setActivationPolicy(.accessory)
+            Task { @MainActor in
+                await checkUpdates(agent: AgentClient())
+                print("SELFTEST RESULT \(failures == 0 ? "PASS" : "FAIL")")
+                fflush(stdout)
+                exit(failures == 0 ? 0 : 1)
             }
             return true
         }
@@ -160,6 +173,9 @@ enum SelfTest {
         // Accessibility ones are refused until the user allows MarDock.
         await checkExtras(agent: agent)
 
+        // Updates: the updater answers, and the helper won't install junk.
+        await checkUpdates(agent: agent)
+
         // 7. Launch, hide and quit a real app.
         await launchHideQuit(agent: agent)
 
@@ -294,6 +310,56 @@ enum SelfTest {
         let me = WindowInfo(pid: getpid(), bundleIdentifier: Bundle.main.bundleIdentifier ?? "io.github.aliraza47.MarDock", title: "", index: 0)
         await expectRefusal("helper-refuses-own-windows", .notAllowed) { try await agent.showWindow(me) }
         info("screen-recording", CGPreflightScreenCaptureAccess() ? "allowed" : "not allowed")
+    }
+
+    /// The updater is reachable and validates its requests; the helper
+    /// refuses an archive that isn't a MarDock release, and an install
+    /// request without an archive. Nothing is replaced, and the Trash is
+    /// never emptied: only whether Finder may be asked is reported.
+    private static func checkUpdates(agent: AgentClient) async {
+        let updater = UpdaterClient()
+        do {
+            let release = try await updater.latestRelease()
+            check("updater-check", true, release.map { "latest \($0.version), installable=\($0.installable)" } ?? "no releases")
+        } catch let error as UpdaterClientError {
+            // Offline or rate limited still proves the updater answered.
+            switch error {
+            case .refused(.offline), .refused(.failed), .refused(.rateLimited):
+                check("updater-check", true, "answered: \(error)")
+            default:
+                check("updater-check", false, "\(error)")
+            }
+        } catch {
+            check("updater-check", false, "\(error)")
+        }
+        do {
+            _ = try await updater.send(.download(version: "1.0/../../x"), timeout: 10)
+            check("updater-refuses-bad-version", false, "was allowed")
+        } catch let error as UpdaterClientError {
+            check("updater-refuses-bad-version", error == .refused(.invalidRequest), "\(error)")
+        } catch {
+            check("updater-refuses-bad-version", false, "\(error)")
+        }
+
+        await expectRefusal("helper-refuses-install-without-archive", .invalidRequest) {
+            _ = try await agent.send(.installUpdate(version: "999.0.0", sha256: String(repeating: "a", count: 64)))
+        }
+        let junk = FileManager.default.temporaryDirectory.appendingPathComponent("selftest-update.aar")
+        let bytes = Data((0..<4096).map { _ in UInt8.random(in: 0...255) })
+        let digest = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
+        if FileManager.default.createFile(atPath: junk.path, contents: bytes), let handle = try? FileHandle(forReadingFrom: junk) {
+            await expectRefusal("helper-refuses-junk-update", .verificationFailed) {
+                try await agent.installUpdate(version: "999.0.0", sha256: digest, archive: handle)
+            }
+            try? handle.close()
+        } else {
+            check("helper-refuses-junk-update", false, "couldn't write the test archive")
+        }
+        try? FileManager.default.removeItem(at: junk)
+
+        let finder = NSAppleEventDescriptor(bundleIdentifier: "com.apple.finder")
+        let permission = AEDeterminePermissionToAutomateTarget(finder.aeDesc, FourCharCode(0x666E_6472), FourCharCode(0x656D_7074), false)
+        info("empty-trash-permission", "\(permission) (0 allowed, -1744 not asked yet, -1743 denied)")
     }
 
     private static func expectRefusal(_ name: String, _ expected: AgentFailure, _ body: () async throws -> Void) async {

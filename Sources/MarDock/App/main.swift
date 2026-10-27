@@ -12,9 +12,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ProcessInfo.processInfo.disableAutomaticTermination("MarDock is the dock")
         ProcessInfo.processInfo.disableSuddenTermination()
 
-        let coordinator = AppCoordinator()
-        self.coordinator = coordinator
-        coordinator.start()
+        // After an update the new copy starts while the old one is still
+        // quitting: wait for it, so there's only ever one dock.
+        waitForOtherInstances(deadline: Date().addingTimeInterval(20)) {
+            let coordinator = AppCoordinator()
+            self.coordinator = coordinator
+            coordinator.start()
+        }
+    }
+
+    private func waitForOtherInstances(deadline: Date, then start: @escaping @MainActor () -> Void) {
+        let others = NSRunningApplication.runningApplications(withBundleIdentifier: AppInfo.bundleIdentifier)
+            .filter { $0 != NSRunningApplication.current && !$0.isTerminated }
+        guard !others.isEmpty else {
+            start()
+            return
+        }
+        guard Date() < deadline else {
+            // Another MarDock is still running: leave the dock to it.
+            NSApp.terminate(nil)
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            MainActor.assumeIsolated { self.waitForOtherInstances(deadline: deadline, then: start) }
+        }
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

@@ -8,6 +8,9 @@
       Save panel (apps to add, images for icons, themes and settings files),
       and folders the user picked to keep in the dock (remembered with a
       read-only security-scoped bookmark),
+    • Apple Events to Finder only, and only the commands in Finder's
+      com.apple.finder.trash group (emptying the Trash); macOS also asks
+      you before the first one,
     • no hardened-runtime exceptions (no JIT, no unsigned code, no DYLD tricks).
   scripts/security-audit.sh fails the build if this list ever grows.
 -->
@@ -15,9 +18,18 @@
 <dict>
 	<key>com.apple.security.app-sandbox</key>
 	<true/>
+	<key>com.apple.security.automation.apple-events</key>
+	<true/>
 	<key>com.apple.security.files.bookmarks.app-scope</key>
 	<true/>
 	<key>com.apple.security.files.user-selected.read-write</key>
 	<true/>
+	<key>com.apple.security.scripting-targets</key>
+	<dict>
+		<key>com.apple.finder</key>
+		<array>
+			<string>com.apple.finder.trash</string>
+		</array>
+	</dict>
 </dict>
 </plist>
