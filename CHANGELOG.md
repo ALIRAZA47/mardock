@@ -8,6 +8,35 @@ downloads, checksums and build provenance are on the
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-28
+
+### Added
+
+- **Empty Trash** from the Trash tile's menu. It asks the same question
+  Finder does (hold ⌥ to skip it), and MarDock asks Finder to do the
+  emptying, as the macOS Dock does: macOS asks once for Automation permission
+  for Finder, and the sandbox lets MarDock send Finder that one command and
+  no other.
+- **Updates when you want them.** Check for Updates… in the menu bar menu,
+  the app menu and Settings ▸ About, plus a daily check that is off by
+  default. A separate sandboxed updater fetches only this repository's
+  releases; the download is checked against the release's checksum and its
+  signature before the helper swaps the app, and the new MarDock starts once
+  the old one has quit. Releases now include the archive the updater
+  installs, so this is the last update that has to be done by hand.
+- The project is open source under the MIT License, with a contributing
+  guide, a code of conduct, issue and pull request templates, and this
+  changelog.
+
+### Fixed
+
+- Importing from a macOS Dock full of apps with long paths brings over as
+  many as fit instead of failing.
+- The minimized-windows extra never lists or raises windows of Finder, other
+  parts of macOS or MarDock itself, matching what Quit allows.
+- A helper reply that is too large to send shows an error instead of doing
+  nothing.
+
 ## [1.0.0] - 2026-10-27
 
 The first release.
@@ -35,5 +64,6 @@ The first release.
   tiny allowlisted XPC helper, no third-party dependencies, and a security
   audit and self-test that run in CI on every change.
 
-[Unreleased]: https://github.com/ALIRAZA47/mardock/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/ALIRAZA47/mardock/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/ALIRAZA47/mardock/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/ALIRAZA47/mardock/releases/tag/v1.0.0
