@@ -166,12 +166,22 @@ killall Dock
 - The CI workflow runs with read-only permissions and no secrets, and packs
   the **MarDock-app** artifact straight after the audit, before the
   self-test, screenshot and tour steps run anything else on the runner.
-- Both workflows pin the actions they use to commit SHAs. Anyone who can
-  push to the repository can push a `v*` tag, so a tag protection rule
-  for `v*` is the way to limit who can cut a release.
+- Both workflows pin the actions they use to commit SHAs, and Dependabot
+  keeps the pins current. Repository rulesets let `main` change only through
+  pull requests approved by the code owner, and let only repository admins
+  create, move or delete `v*` tags, so only they can cut a release.
+
+## Supported versions
+
+Fixes ship as a new release rather than as patches to old ones, so only the
+[latest release](https://github.com/ALIRAZA47/mardock/releases/latest) is
+supported. Please check that a problem is still there in it before reporting.
 
 ## Reporting a vulnerability
 
 Please report security issues privately through GitHub's
-**Security ▸ Report a vulnerability** on this repository rather than in a
-public issue.
+[**Report a vulnerability**](https://github.com/ALIRAZA47/mardock/security/advisories/new)
+(the Security tab of this repository) rather than in a public issue, with the
+MarDock and macOS versions and the steps to reproduce. The maintainer aims to
+acknowledge reports within a week and to fix confirmed problems in the next
+release, crediting you in the advisory unless you would rather not be named.

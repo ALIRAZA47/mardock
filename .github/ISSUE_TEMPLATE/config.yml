@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/ALIRAZA47/mardock/security/advisories/new
+    about: Security problems are handled privately, never in a public issue. SECURITY.md has the details.
+  - name: Getting the macOS Dock back
+    url: https://github.com/ALIRAZA47/mardock#getting-the-macos-dock-back
+    about: If MarDock quit without restoring the macOS Dock, the README shows how to bring it back.

@@ -9,6 +9,12 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/ALIRAZA47/mardock/actions/workflows/ci.yml"><img src="https://github.com/ALIRAZA47/mardock/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+  <a href="https://github.com/ALIRAZA47/mardock/releases/latest"><img src="https://img.shields.io/github/v/release/ALIRAZA47/mardock?label=release" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/ALIRAZA47/mardock" alt="MIT license"></a>
+</p>
+
+<p align="center">
   <img src="docs/screenshots/dock-glass.jpg" width="820" alt="MarDock's Glass theme, magnifying the Photos icon">
 </p>
 
@@ -250,3 +256,17 @@ magnification math is in [`Magnifier`](Sources/MarDockCore/Magnifier.swift).
 - macOS doesn't let third-party apps reserve screen space the way the system
   Dock does, so maximised windows can extend under MarDock. Use
   “Automatically hide ▸ When a window overlaps”.
+
+## Contributing
+
+Bug reports, ideas and pull requests are welcome.
+[CONTRIBUTING.md](CONTRIBUTING.md) explains how to build and check a change
+and what keeps the security model intact, and [CHANGELOG.md](CHANGELOG.md)
+lists what has changed. Security problems go through
+[private vulnerability reporting](https://github.com/ALIRAZA47/mardock/security/advisories/new)
+rather than issues. This project follows the
+[Contributor Covenant](CODE_OF_CONDUCT.md).
+
+## License
+
+MarDock is released under the [MIT License](LICENSE).

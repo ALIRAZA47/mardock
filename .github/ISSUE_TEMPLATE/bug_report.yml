@@ -1,0 +1,75 @@
+name: Bug report
+description: Something in MarDock doesn't work the way it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. If this is a **security** problem, please don't file it here: use [private vulnerability reporting](https://github.com/ALIRAZA47/mardock/security/advisories/new) instead (see SECURITY.md).
+
+        If MarDock quit without putting the macOS Dock back, the README's [Getting the macOS Dock back](https://github.com/ALIRAZA47/mardock#getting-the-macos-dock-back) section has the fix.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Start from a fresh launch if you can. A short screen recording helps a lot for anything about motion or appearance.
+      value: |
+        1.
+        2.
+        3.
+  - type: input
+    id: version
+    attributes:
+      label: MarDock version
+      description: Shown in Settings ▸ About (menu bar icon ▸ About MarDock).
+      placeholder: 1.0.0 (28)
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version and Mac
+      description: Apple menu ▸ About This Mac.
+      placeholder: macOS 15.7 on a MacBook Air (M2)
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install MarDock?
+      options:
+        - Disk image from a release
+        - Built from source
+        - Artifact from a CI run
+    validations:
+      required: true
+  - type: dropdown
+    id: settings
+    attributes:
+      label: Which of these are turned on?
+      description: Settings ▸ macOS Dock and Settings ▸ Behaviour ▸ Extras.
+      multiple: true
+      options:
+        - Replace the macOS Dock (it's hidden while MarDock runs)
+        - Notification badges
+        - Minimized windows
+        - Window previews
+        - Full Trash icon
+        - None of these
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Optional. This prints the last ten minutes of MarDock's own log messages and nothing else; paste whatever looks relevant.
+        ```sh
+        log show --last 10m --predicate 'subsystem == "io.github.aliraza47.MarDock" OR subsystem == "MarDockAgent"'
+        ```
+      render: text

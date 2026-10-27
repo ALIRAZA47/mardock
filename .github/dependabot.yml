@@ -1,0 +1,9 @@
+# Keeps the SHA-pinned GitHub Actions in the workflows current: Dependabot
+# bumps each pin and the version comment next to it. MarDock has no package
+# dependencies, so there is nothing else to watch.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
