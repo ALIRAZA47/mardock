@@ -87,7 +87,10 @@ wait_for_tour
 echo "captured $count frames in $((ended - began)) s"
 
 venv="$(mktemp -d)/venv"
-if python3 -m venv "$venv" && "$venv/bin/pip" install --quiet imageio imageio-ffmpeg; then
+# Exact versions (PyPI releases are immutable), transitive ones included, so
+# the stitcher never pulls in something that wasn't reviewed. If a runner's
+# Python can't take them, the frames are kept instead.
+if python3 -m venv "$venv" && "$venv/bin/pip" install --quiet imageio==2.38.1 imageio-ffmpeg==0.6.0 numpy==2.5.4 pillow==13.0.0; then
   "$venv/bin/python" - "$OUT/frames" "$OUT/tour.mp4" "$count" "$((ended - began))" <<'PY'
 import glob
 import sys

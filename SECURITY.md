@@ -51,7 +51,7 @@ dock works the same without them.
 | --- | --- | --- |
 | Full Trash icon | none | The helper reads the number of entries in `~/.Trash` (a directory attribute): nothing in the Trash is opened or listed. |
 | Notification badges | Accessibility | The helper reads the badge text the macOS Dock shows on each app (`AXStatusLabel`), and that app's identifier. |
-| Minimized windows | Accessibility | The helper lists regular apps' minimized windows (title only) and, when you click one, unminimizes and raises it. The pid must belong to the claimed app, never MarDock itself. |
+| Minimized windows | Accessibility | The helper lists regular apps' minimized windows (title only) and, when you click one, unminimizes and raises it. The pid must belong to the claimed app, never Finder, other system UI or MarDock itself. |
 | Window previews | Screen Recording | The sandboxed app takes small pictures of the windows of the app you point at (ScreenCaptureKit), shows them, and keeps nothing. |
 
 The Accessibility work runs in the helper, which isn't sandboxed. macOS
@@ -105,8 +105,8 @@ anything happens:
 | Is the Trash full | No parameters; reads the entry count of `~/.Trash` only. Rate limited. |
 | Accessibility status | Says whether MarDock may use Accessibility; can show macOS's request (rate limited). |
 | Read Dock badges | Needs Accessibility. Reads only the badge text and app of the items of the real macOS Dock (the process running from `/System/Library/CoreServices/Dock.app`); labels capped at 8 characters, 64 badges. Rate limited. |
-| List minimized windows | Needs Accessibility. Regular apps only, never MarDock; titles cleaned and capped at 80 characters, 32 windows. Rate limited. |
-| Bring back a window | Needs Accessibility. Same pid/bundle-ID/regular-app checks as hiding (raising a window is harmless, so Finder's count too); never MarDock. Unminimizes, raises and brings forward that one window. Rate limited. |
+| List minimized windows | Needs Accessibility. Regular apps only, never the parts of macOS that can't be quit (Finder included) and never MarDock; titles cleaned and capped at 80 characters, 32 windows. Rate limited. |
+| Bring back a window | Needs Accessibility. Same pid/bundle-ID/regular-app checks as quitting, so never Finder, other system UI or MarDock. Unminimizes, raises and brings forward that one window. Rate limited. |
 
 There is no operation that takes a path to open, a command to run, a script to
 evaluate, or an arbitrary preference key to write.

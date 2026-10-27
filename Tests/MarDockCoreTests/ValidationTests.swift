@@ -400,6 +400,20 @@ final class SystemDockTests: XCTestCase {
 }
 
 final class AgentWireTests: XCTestCase {
+    func testImportReplyIsTrimmedToFitTheWire() throws {
+        let long = "/Applications/" + String(repeating: "a", count: 1000) + ".app"
+        let apps = (0..<100).map { ImportedDockApp(bundleIdentifier: "com.example.app\($0)", path: long, name: "App \($0)") }
+        XCTAssertThrowsError(try AgentWire.encode(AgentReply.importedApps(apps))) {
+            XCTAssertEqual($0 as? AgentWire.WireError, .tooLarge)
+        }
+        guard case let .importedApps(fitting) = AgentWire.importedApps(fitting: apps) else { return XCTFail("not an import reply") }
+        XCTAssertFalse(fitting.isEmpty)
+        XCTAssertLessThan(fitting.count, apps.count)
+        XCTAssertEqual(fitting, Array(apps.prefix(fitting.count)), "the Dock's order is kept; entries are dropped from the end")
+        XCTAssertNoThrow(try AgentWire.encode(AgentReply.importedApps(fitting)))
+        XCTAssertEqual(AgentWire.importedApps(fitting: Array(apps.prefix(3))), .importedApps(Array(apps.prefix(3))), "a reply that fits is untouched")
+    }
+
     func testRequestsRoundTrip() throws {
         let requests: [AgentRequest] = [
             .hello(clientVersion: 1),

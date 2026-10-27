@@ -129,10 +129,12 @@ final class AgentService: NSObject, MarDockAgentXPC, @unchecked Sendable {
         case .minimizedWindows:
             guard limiter.allow("windows", every: 0.8) else { return { .failure(.rateLimited) } }
             guard WindowAccess.isTrusted else { return { .failure(.notAllowed) } }
-            let own = Set(ownBundleIdentifiers)
+            // The same apps quitting is allowed for: never part of macOS (so
+            // not Finder's windows either) and never us.
+            let excluded = AppTerminator.protectedBundleIdentifiers.union(ownBundleIdentifiers)
             let apps = NSWorkspace.shared.runningApplications.compactMap { app -> (pid: pid_t, bundleIdentifier: String)? in
                 guard app.activationPolicy == .regular, !app.isTerminated, app.processIdentifier != self.clientPID,
-                      let identifier = app.bundleIdentifier, !own.contains(identifier.lowercased())
+                      let identifier = app.bundleIdentifier, !excluded.contains(identifier.lowercased())
                 else { return nil }
                 return (app.processIdentifier, identifier)
             }
@@ -142,12 +144,13 @@ final class AgentService: NSObject, MarDockAgentXPC, @unchecked Sendable {
             guard limiter.allow("show:\(target.pid)", every: 0.2) else { return { .failure(.rateLimited) } }
             guard WindowAccess.isTrusted else { return { .failure(.notAllowed) } }
             // The pid must still belong to the app the dock thinks it is, a
-            // regular app, and never us.
+            // regular app, and — as for quitting — never part of macOS or us.
             guard let app = NSRunningApplication(processIdentifier: target.pid), !app.isTerminated,
                   let actual = app.bundleIdentifier,
                   actual.caseInsensitiveCompare(target.bundleIdentifier) == .orderedSame,
                   app.activationPolicy == .regular,
                   target.pid != clientPID, target.pid != getpid(),
+                  !AppTerminator.protectedBundleIdentifiers.contains(actual.lowercased()),
                   !ownBundleIdentifiers.contains(actual.lowercased())
             else { return { .failure(.notAllowed) } }
             return { WindowAccess.show(target) }
@@ -157,8 +160,12 @@ final class AgentService: NSObject, MarDockAgentXPC, @unchecked Sendable {
         }
     }
 
+    /// A reply that doesn't fit the wire becomes a failure the app can show,
+    /// never empty data it can only shrug at.
     private static func encode(_ reply: AgentReply) -> Data {
-        (try? AgentWire.encode(reply)) ?? Data()
+        if let data = try? AgentWire.encode(reply) { return data }
+        agentLog.error("A reply didn't fit the wire; sending a failure instead")
+        return (try? AgentWire.encode(AgentReply.failure(.failed))) ?? Data()
     }
 
     private func perform(_ request: AgentRequest) -> AgentReply {
@@ -184,7 +191,7 @@ final class AgentService: NSObject, MarDockAgentXPC, @unchecked Sendable {
             return .done
 
         case .importSystemDockApps:
-            return .importedApps(DockPreferences.pinnedApps())
+            return AgentWire.importedApps(fitting: DockPreferences.pinnedApps())
 
         case let .quitApp(pid, bundleIdentifier, force):
             guard limiter.allow("quit:\(pid)", every: 0.3) else { return .failure(.rateLimited) }
