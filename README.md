@@ -25,6 +25,10 @@ frosted glass to aurora and neon. The dock runs in the App Sandbox with no
 network access and asks for no special permissions unless you turn on an extra
 that needs one.
 
+**[Read the docs](https://mardock.alirazakhan.me/docs/)** or
+**[try it in your browser](https://mardock.alirazakhan.me/demo/)** at
+[mardock.alirazakhan.me](https://mardock.alirazakhan.me).
+
 ## Highlights
 
 **Motion**
@@ -249,12 +253,14 @@ Sources/
   MarDockAgent/   The XPC helper.
 App/              Info.plists, entitlements, icon.
 scripts/          Bundle + sign, security audit, self-test, icon generator.
+site/             The website and docs, built with python3 site/build.py.
 ```
 
 [`playground/index.html`](playground/index.html) is a browser version of the
 dock for trying looks and settings without building: it runs a line-for-line
 port of the engine and the themes' numbers, so keep it in step with
 `MarDockCore` and `Theme.swift`. Only the frosted glass and the app icons are stand-ins.
+It's also the website's live demo.
 
 The interesting part is [`DockEngine`](Sources/MarDockCore/DockEngine.swift): it
 owns every spring and produces one `DockFrame` per display refresh, which

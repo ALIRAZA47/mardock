@@ -1,0 +1,41 @@
+<!--
+title: Build from source
+summary: Build MarDock yourself, run its checks, and find your way around the code.
+-->
+<p class="lede">MarDock has no dependencies: it builds with SwiftPM, using Xcode 15 or later (Xcode 26 for Liquid Glass) or just the Command Line Tools.</p>
+
+<h2>Build and run</h2>
+<pre><code>git clone https://github.com/ALIRAZA47/mardock.git
+cd mardock
+make install    # builds, copies to /Applications and opens MarDock</code></pre>
+<p>Or use <code>make run</code> to build and launch from <code>build/MarDock.app</code> without installing.</p>
+
+<h2 id="checks">Checks</h2>
+<pre><code>make test       # unit tests: engine, validation, protocol
+make audit      # security audit of the built app
+make selftest   # end-to-end checks against your system
+make playground # the dock in your browser</code></pre>
+<p>CI runs the same tests, build, audit and self-test on every change, then takes screenshots and records a tour of the dock on a macOS runner.</p>
+
+<h2 id="layout">Finding your way around</h2>
+<div class="table-wrap"><table>
+  <tr><th>Path</th><th>What's there</th></tr>
+  <tr><td><code>Sources/MarDockCore/</code></td><td>Pure Swift: spring physics, the magnification warp, the layout engine, validated settings and the helper protocol. Unit-tested, and also builds on Linux.</td></tr>
+  <tr><td><code>Sources/MarDock/</code></td><td>The sandboxed app: the Core Animation renderer, app state, and the SwiftUI settings.</td></tr>
+  <tr><td><code>Sources/MarDockAgent/</code></td><td>The XPC helper.</td></tr>
+  <tr><td><code>Sources/MarDockUpdater/</code></td><td>The sandboxed updater, the only part with network access.</td></tr>
+  <tr><td><code>playground/</code></td><td>A browser port of the engine and themes, which is also this site's <a href="/demo/">live demo</a>.</td></tr>
+  <tr><td><code>site/</code></td><td>This site, built with <code>python3 site/build.py</code>.</td></tr>
+</table></div>
+<p>The interesting part is <a href="{{github}}/blob/main/Sources/MarDockCore/DockEngine.swift"><code>DockEngine</code></a>: it owns every spring and produces one frame per display refresh. The magnification maths is in <a href="{{github}}/blob/main/Sources/MarDockCore/Magnifier.swift"><code>Magnifier</code></a>.</p>
+
+<h2 id="signing">Signing for distribution</h2>
+<p>Local builds are signed ad-hoc, which is fine on the Mac that built them. To share MarDock, sign it with a Developer ID and notarize it:</p>
+<pre><code>SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" make app
+ditto -c -k --keepParent build/MarDock.app build/MarDock.zip
+xcrun notarytool submit build/MarDock.zip --keychain-profile &lt;profile&gt; --wait
+xcrun stapler staple build/MarDock.app
+make dmg</code></pre>
+
+<h2 id="contributing">Contributing</h2>
+<p>Bug reports, ideas and pull requests are welcome. <a href="{{github}}/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a> explains how to build and check a change, and what keeps the security model intact. MarDock is released under the <a href="{{github}}/blob/main/LICENSE">MIT License</a>.</p>

@@ -1,0 +1,31 @@
+<!--
+title: Install MarDock
+summary: Download the disk image, drag MarDock to Applications and open it.
+-->
+<p class="lede">It takes about a minute. You need macOS 14 Sonoma or later, on Apple silicon or Intel.</p>
+
+<h2>Download</h2>
+<ol>
+  <li>Download <a href="{{dmg}}">MarDock-{{version}}.dmg</a>.</li>
+  <li>Open it and drag MarDock to Applications.</li>
+  <li>Open MarDock from Applications.</li>
+</ol>
+<p>Older versions, the zip and the checksums are on the <a href="{{github}}/releases">Releases page</a>.</p>
+
+<h2 id="open-anyway">If macOS can't verify it</h2>
+<p>Releases are signed ad-hoc and not notarized for now, so the first time you open one, macOS says it can't verify MarDock.</p>
+<ol>
+  <li>Click <strong>Done</strong>.</li>
+  <li>Open <strong>System Settings ▸ Privacy &amp; Security</strong> and scroll down to the notice about MarDock.</li>
+  <li>Click <strong>Open Anyway</strong>. You only do this once.</li>
+</ol>
+<p>Or clear the download flag before you open it:</p>
+<pre><code>xattr -dr com.apple.quarantine /Applications/MarDock.app</code></pre>
+
+<h2 id="check">Check your download</h2>
+<p>Each release lists SHA-256 checksums and a build provenance, which proves the file was built by this repository's release workflow from that version's tag.</p>
+<pre><code>shasum -a 256 -c SHA256SUMS.txt --ignore-missing
+gh attestation verify MarDock-{{version}}.dmg --repo ALIRAZA47/mardock</code></pre>
+
+<h2>What's next</h2>
+<p>MarDock asks three questions the first time it opens. <a href="/docs/first-run/">First run</a> explains them.</p>

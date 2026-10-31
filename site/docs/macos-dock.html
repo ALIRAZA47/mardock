@@ -1,0 +1,43 @@
+<!--
+title: macOS Dock
+summary: Hiding the built-in Dock, getting it back, and tuning it.
+-->
+<p class="lede">MarDock can sit alongside the macOS Dock or replace it. Replacing it is one switch, at the top of <strong>Settings ▸ General</strong>.</p>
+
+<h2 id="replace">Replace the macOS Dock</h2>
+<p>Turn on <strong>Replace the macOS Dock</strong>, and MarDock saves your Dock's settings and hides it. macOS has no switch for this, so MarDock uses four of the Dock's own settings together:</p>
+<div class="table-wrap"><table>
+  <tr><th>Dock setting</th><th>Why</th></tr>
+  <tr><td><code>autohide</code> on</td><td>Keeps the Dock off the screen.</td></tr>
+  <tr><td><code>autohide-delay</code> 1000 seconds</td><td>Stops it coming back when the pointer rests at the edge.</td></tr>
+  <tr><td><code>no-bouncing</code> on</td><td>Otherwise an app asking for attention brings the Dock up to bounce its icon.</td></tr>
+  <tr><td><code>allow-display-switching</code> off</td><td>Otherwise it moves to whichever display the pointer pushes down against.</td></tr>
+</table></div>
+<p>The macOS Dock restarts once to pick these up, and MarDock keeps them in place from then on, including after a restart.</p>
+<div class="note"><p>While the Dock is hidden, apps can't bounce for attention anywhere: macOS doesn't tell other apps about those requests, so MarDock can't show them. Notification badges still work, as an <a href="/docs/extras/">extra</a>.</p></div>
+
+<h2 id="restore">Getting it back</h2>
+<p>Turn the switch off, or choose <strong>Restore the macOS Dock</strong> in the menu bar menu. Quitting MarDock restores it too, unless you turn off <strong>Restore the macOS Dock when MarDock quits</strong>. Restoring puts back exactly what was there before.</p>
+<p>If MarDock ever can't, say after a crash, reopen it or run:</p>
+<pre><code>defaults delete com.apple.dock autohide-delay
+defaults delete com.apple.dock no-bouncing
+defaults delete com.apple.dock allow-display-switching
+defaults write com.apple.dock autohide -bool false
+killall Dock</code></pre>
+
+<h2 id="tune">Tune the macOS Dock</h2>
+<p><strong>Settings ▸ macOS Dock</strong> also changes the Dock's own settings, whether you've hidden it or not:</p>
+<ul>
+  <li>Minimize effect: genie, scale or suck</li>
+  <li>Minimize windows into their app's icon</li>
+  <li>Show suggested and recent apps</li>
+  <li>Animate opening apps</li>
+  <li>Show indicators for open apps</li>
+  <li>Make icons of hidden apps translucent</li>
+  <li>Scroll up on an icon to show its windows</li>
+  <li>Auto-hide delay and animation speed</li>
+</ul>
+<p>Applying restarts the macOS Dock, which takes a moment. <strong>Reset to macOS Defaults</strong> removes every change, except that a hidden Dock stays hidden.</p>
+
+<h2 id="minimized">Minimized windows</h2>
+<p>Minimized windows still go to the hidden macOS Dock. Either turn on <strong>Minimized windows in the dock</strong> in <a href="/docs/extras/">Extras</a>, or turn on <strong>Minimize windows into their app's icon</strong> here and click the app to bring them back.</p>

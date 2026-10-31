@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; media-src 'self'; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title>{{title}}</title>
+<meta name="description" content="{{description}}">
+<link rel="canonical" href="{{url}}">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="MarDock">
+<meta property="og:title" content="{{title}}">
+<meta property="og:description" content="{{description}}">
+<meta property="og:url" content="{{url}}">
+<meta property="og:image" content="https://mardock.alirazakhan.me/assets/img/og.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#1D2671">
+<link rel="icon" type="image/png" href="/assets/favicon.png">
+<link rel="preload" href="/assets/fonts/gabarito-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/assets/site.css?{{css}}">
+<script src="/assets/site.js?{{js}}" defer></script>
+</head>
+<body class="{{classes}}">
+<a class="skip" href="#content">Skip to content</a>
+<header class="menubar">
+  <a class="brand" href="/"><img src="/assets/img/icon.webp" alt="" width="18" height="18"><span>MarDock</span></a>
+  <nav aria-label="Site">
+    <a href="/docs/"{{current-docs}}>Docs</a>
+    <a href="/demo/"{{current-demo}}>Live demo</a>
+    <a href="/changelog/"{{current-changelog}}>Changelog</a>
+    <a href="{{github}}">GitHub</a>
+  </nav>
+  <a class="version" href="{{dmg}}">Download {{version}}</a>
+</header>
+{{body}}
+<footer class="foot">
+  <p>This site sets no cookies, loads nothing from anywhere else and counts nobody.</p>
+  <p>MIT License · <a href="{{github}}">Source</a> · <a href="{{github}}/blob/main/SECURITY.md">Security</a> · <a href="{{github}}/blob/main/PRIVACY.md">Privacy</a></p>
+</footer>
+</body>
+</html>

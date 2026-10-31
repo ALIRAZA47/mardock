@@ -1,0 +1,22 @@
+<!--
+title: Updates and backups
+summary: How updates work, and how to move your dock to another Mac.
+-->
+<p class="lede">Nothing updates unless you ask, and your whole dock fits in one file.</p>
+
+<h2 id="updates">Updates</h2>
+<p>Choose <strong>Check for Updates…</strong> in the menu bar menu, or use the Updates section in <strong>Settings ▸ General</strong> or <strong>About</strong>. You can also turn on <strong>Check for updates once a day</strong>, which is off by default.</p>
+<p>Checking asks GitHub for MarDock's newest release and sends nothing about you. A separate, sandboxed part of MarDock does it, so the dock itself stays offline.</p>
+
+<h3 id="installing">What installing does</h3>
+<ol>
+  <li>The updater downloads the release and checks it against its published checksum.</li>
+  <li>MarDock's helper checks it again, along with its signature and version.</li>
+  <li>The helper swaps the app, and MarDock relaunches as the new version.</li>
+</ol>
+<p>If MarDock isn't in your Applications folder, it can't replace itself. Move it there, or download the update yourself.</p>
+<div class="note"><p>Releases are signed ad-hoc for now, so after an update you'll need to allow Accessibility and Screen Recording again if you use them.</p></div>
+
+<h2 id="backup">Move to another Mac</h2>
+<p><strong>Export Settings…</strong> in Settings ▸ General saves your dock, settings, themes, profiles, shortcuts and custom icons in one file. <strong>Import Settings…</strong> on the other Mac replaces them.</p>
+<p>Some choices belong to each Mac, so importing leaves them alone: whether MarDock hides the macOS Dock, which display it uses, and the extras. A file can never turn on something that uses a permission.</p>

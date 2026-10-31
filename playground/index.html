@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <!-- artifact:begin -->
 <title>MarDock Playground</title>
+<script>
+// The docs site embeds this page: ?embed=hero is the dock alone on a clear
+// desktop, ?embed=full is the desktop with the settings beside it.
+document.documentElement.dataset.embed = new URLSearchParams(location.search).get('embed') || '';
+</script>
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
 /* Layout: a live desktop "stage" running the real dock beside an inspector column; they stack on phones. */
@@ -62,6 +67,25 @@ body { background: var(--bg); color: var(--ink); font-family: var(--font-ui); fo
   user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; outline: none;
 }
 .stage:focus-visible { box-shadow: 0 0 0 2px var(--accent), var(--lift); }
+html[data-embed="hero"] body, html[data-embed="full"] body { margin: 0; }
+html[data-embed="hero"], html[data-embed="hero"] body { background: transparent; }
+html[data-embed="hero"] .stage { background: transparent; }
+html[data-embed="hero"] .wall { visibility: hidden; }
+html[data-embed="hero"] .inspector { display: none; }
+html[data-embed="hero"] .stage, html[data-embed="full"] .stage { height: 100vh; height: 100dvh; border-radius: 0; box-shadow: none; }
+html[data-embed="hero"] .masthead, html[data-embed="full"] .masthead,
+html[data-embed="hero"] .hints, html[data-embed="full"] .hints,
+html[data-embed="hero"] .fidelity, html[data-embed="full"] .fidelity,
+html[data-embed="hero"] .menubar, html[data-embed="full"] .menubar { display: none; }
+html[data-embed="hero"] .page, html[data-embed="full"] .page { max-width: none; padding: 0; }
+html[data-embed="hero"] .workbench { display: block; position: relative; }
+html[data-embed="full"] .workbench { gap: 0; }
+html[data-embed="hero"] .stage-col, html[data-embed="full"] .stage-col { position: static; }
+html[data-embed="full"] .inspector { height: 100vh; height: 100dvh; overflow: auto; border-width: 0 0 0 1px; border-radius: 0; }
+@media (max-width: 1020px) {
+  html[data-embed="full"] .stage { height: 62vh; height: 62dvh; }
+  html[data-embed="full"] .inspector { height: auto; margin: 12px; border-width: 1px; border-radius: 12px; }
+}
 .hints { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 12px 2px 0; color: var(--muted); font-size: 13px; }
 .hints b { color: var(--ink); font-weight: 600; }
 .fidelity { margin: 8px 2px 0; color: var(--muted); font-size: 12.5px; max-width: 90ch; }
@@ -830,9 +854,15 @@ const APPS = {
 const DEFAULT_PINS = ['browser', 'mail', 'messages', 'gallery', 'notes', 'calendar', 'music', 'maps', 'settings'];
 
 const hot = window.claude?.hot;
-const saved = hot?.data?.mardock || store.get('mardock-playground') || {};
+const page = new URLSearchParams(location.search);
+const hero = page.get('embed') === 'hero';
+const saved = hero ? {} : hot?.data?.mardock || store.get('mardock-playground') || {};
 const settings = sanitize({ ...DEFAULT_SETTINGS, ...(saved.settings || {}) });
 const scene = { ...DEFAULT_SCENE, ...(saved.scene || {}) };
+if (hero) {
+  if (THEMES[page.get('theme')]) settings.theme = page.get('theme');
+  if (page.get('appearance') === 'dark') scene.appearance = 'dark';
+}
 const tweaks = sanitizeTweaks(saved.tweaks);
 let pins = Array.isArray(saved.pins) ? saved.pins.filter(id => APPS[id] && id !== 'finder' && id !== 'trash') : [...DEFAULT_PINS];
 let order = 0;
@@ -877,6 +907,7 @@ function sanitizeTweaks(raw) {
   return out;
 }
 function persist() {
+  if (hero) return;
   const data = { settings, scene, tweaks, pins };
   store.set('mardock-playground', data);
 }
@@ -1841,8 +1872,12 @@ function openMenu(items, x, y) {
   menuEl.style.left = left + 'px'; menuEl.style.top = top + 'px';
   engine.setPointer(null);
   kick();
+  dispatchEvent(new CustomEvent('mardock-menu', { detail: true }));
 }
-function closeMenu() { closeSubmenus(); menuEl.hidden = true; menuEl.replaceChildren(); menuOpen = false; lastMenu = null; kick(); }
+function closeMenu() {
+  closeSubmenus(); menuEl.hidden = true; menuEl.replaceChildren(); menuOpen = false; lastMenu = null; kick();
+  dispatchEvent(new CustomEvent('mardock-menu', { detail: false }));
+}
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && menuOpen) closeMenu();
   if (e.key === 'Alt' && menuOpen && lastMenu) renderMenu(lastMenu.items, menuEl, true);
@@ -2283,6 +2318,27 @@ function start() {
   syncInspector();
 }
 start();
+
+// The hero sweeps a pretend pointer along the dock once, as the app's own
+// preview does, so a visitor sees what it does before reaching for it.
+if (hero && !scene.reduceMotion) {
+  const began = performance.now();
+  let live = true;
+  const stop = () => { live = false; };
+  stage.addEventListener('pointermove', stop, { once: true });
+  stage.addEventListener('pointerdown', stop, { once: true });
+  requestAnimationFrame(function sweep(now) {
+    if (!live) return;
+    const t = (now - began) / 1000 - 1;
+    if (t >= 3.4) { pointerGone(); return; }
+    if (t > 0) {
+      const f = engine.lastFrame, m = engine.metrics, p = t / 3.4;
+      const u = f.shelfStart + (f.shelfEnd - f.shelfStart) * (0.5 - 0.42 * Math.cos(Math.PI * 2 * p));
+      pointerMoved(u, view.H - m.edgeGap - m.shelfThickness / 2);
+    }
+    requestAnimationFrame(sweep);
+  });
+}
 
 // For scripted checks: compare against the app's own --demo screenshots.
 window.mardockPlayground = {
