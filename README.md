@@ -58,12 +58,16 @@ that needs one.
   switched from the dock's menu or Settings.
 - **Spacers and named dividers** to group apps, a **Share tile** to drop files
   on, a **recent apps** section and **custom icons** for any app.
+- **Double-click shortcuts**: double-click an app for a small panel with its
+  own New and Open commands and their keyboard shortcuts (with Accessibility),
+  websites, files and Shortcuts you add for it, and Hide, Hide Others, Show in
+  Finder and Quit. Or have a double-click hide the app, or hide the others.
 - **Keyboard launching**: ⌃⌥1–9 opens the first nine apps (or ⌥ / ⌥⌘).
 - **Shortcuts, Siri and Focus**: actions to switch profiles and set the theme,
   position, hiding and magnification, plus a Focus filter, so a Work Focus can
   bring up your Work dock.
-- **Move to another Mac**: export the dock, settings, themes, profiles and
-  icons to one file and import it there.
+- **Move to another Mac**: export the dock, settings, themes, profiles,
+  shortcuts and icons to one file and import it there.
 - **Extras you can turn on**: notification badges and minimized windows by
   the Trash (with Accessibility), window previews on hover (with Screen
   Recording) and a full Trash icon. All off until you switch them on.
@@ -79,11 +83,14 @@ that needs one.
 - Auto-hide: never, always, or **only when a window overlaps the dock**.
 - Drag apps from Finder to add them, drag icons to reorder, drag off to remove,
   drop documents on an app to open them with it.
-- Right-click an app for Show/Hide/Quit/Force Quit (hold ⌥), Keep in Dock,
-  Show in Finder. Right-click the dock for themes, position and hiding.
+- Right-click an app for its Shortcuts, Show/Hide/Quit/Force Quit (hold ⌥),
+  Keep in Dock, Show in Finder. Right-click the dock for themes, position and
+  hiding.
   ⌘-click reveals an app in Finder; ⌥-click hides it.
 - Optionally hides the macOS Dock while MarDock runs, saving your settings first
-  and restoring them when MarDock quits.
+  and restoring them when MarDock quits. It stays hidden when an app bounces
+  for attention and when the pointer pushes against another display's edge.
+- Opens at login, from Settings ▸ General or the menu bar menu.
 - Also tunes the **macOS Dock** itself: minimize effect, auto-hide delay and
   animation speed, recent apps, translucent hidden apps and more.
 
@@ -100,7 +107,7 @@ that needs one.
 
 <table>
   <tr>
-    <td><img src="docs/screenshots/settings.png" alt="Settings with a live dock preview and theme gallery"></td>
+    <td><img src="docs/screenshots/settings.png" alt="Settings: search in the sidebar, and Open at login and Replace the macOS Dock at the top of General"></td>
     <td><img src="docs/screenshots/welcome.png" alt="The welcome screen"></td>
   </tr>
   <tr>
@@ -217,12 +224,14 @@ Actions):
 
 ## Getting the macOS Dock back
 
-Turn off **Settings ▸ macOS Dock ▸ Replace the macOS Dock**, choose **Restore
+Turn off **Settings ▸ General ▸ Replace the macOS Dock**, choose **Restore
 the macOS Dock** in the menu bar menu, or just quit MarDock. If MarDock ever
 can't (say, after a crash), run:
 
 ```sh
 defaults delete com.apple.dock autohide-delay
+defaults delete com.apple.dock no-bouncing
+defaults delete com.apple.dock allow-display-switching
 defaults write com.apple.dock autohide -bool false
 killall Dock
 ```

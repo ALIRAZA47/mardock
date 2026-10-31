@@ -18,9 +18,11 @@ final class DockController: NSObject {
     private let pins: PinStore
     private let recents: RecentAppsStore
     private let customIcons: CustomIconStore
+    private let userShortcuts: UserShortcutStore
     private let themes: ThemeStore
     private let folders: FolderStacks
     private let stackPanel = StackPanel()
+    private let shortcutsPanel = ShortcutsPanel()
     private let running: RunningAppsMonitor
     private let icons: IconProvider
     private let actions: AppActions
@@ -41,6 +43,8 @@ final class DockController: NSObject {
 
     // Interaction state.
     private var pressed: (id: String, event: NSEvent)?
+    /// A click held back until it's clear it isn't half of a double-click.
+    private var heldClick: DispatchWorkItem?
     private var dragSourceID: String?
     private var dragDropHandled = false
     private var externalDropActive = false
@@ -55,14 +59,15 @@ final class DockController: NSObject {
     private var followTimer: Timer?
 
     init(
-        settings: SettingsStore, pins: PinStore, recents: RecentAppsStore, customIcons: CustomIconStore, themes: ThemeStore,
-        folders: FolderStacks, running: RunningAppsMonitor, icons: IconProvider, actions: AppActions, systemDock: SystemDockManager,
+        settings: SettingsStore, pins: PinStore, recents: RecentAppsStore, customIcons: CustomIconStore, userShortcuts: UserShortcutStore,
+        themes: ThemeStore, folders: FolderStacks, running: RunningAppsMonitor, icons: IconProvider, actions: AppActions, systemDock: SystemDockManager,
         extras: ExtrasMonitor
     ) {
         self.settings = settings
         self.pins = pins
         self.recents = recents
         self.customIcons = customIcons
+        self.userShortcuts = userShortcuts
         self.themes = themes
         self.folders = folders
         self.running = running
@@ -150,6 +155,11 @@ final class DockController: NSObject {
                 self.renderNow()
             }
             .store(in: &cancellables)
+        shortcutsPanel.onClose = { [weak self] in
+            guard let self else { return }
+            self.reevaluateAutoHide()
+            self.mouse.refresh()
+        }
         previews.onSelect = { [weak self] pid, title in self?.showPreviewedWindow(pid: pid, title: title) }
         previews.onVisibilityChange = { [weak self] in self?.reevaluateAutoHide() }
 
@@ -351,7 +361,7 @@ final class DockController: NSObject {
 
     /// Window previews follow the tile under the pointer.
     private func updatePreviewHover() {
-        guard settings.settings.windowPreviews else {
+        guard settings.settings.windowPreviews, !shortcutsPanel.isShown else {
             if previews.isShown { previews.close() }
             return
         }
@@ -461,7 +471,8 @@ final class DockController: NSObject {
     // MARK: - Auto-hide
 
     private var holdOpen: Bool {
-        menuIsOpen || sharePickerOpen || stackPanel.isShown || previews.isShown || pressed != nil || dragSourceID != nil || externalDropActive
+        menuIsOpen || sharePickerOpen || stackPanel.isShown || shortcutsPanel.isShown || previews.isShown || pressed != nil
+            || dragSourceID != nil || externalDropActive
     }
 
     private func reevaluateAutoHide() {
@@ -590,6 +601,135 @@ final class DockController: NSObject {
     private func ripple(_ id: String) {
         guard settings.settings.clickRipple else { return }
         dockView.ripple(for: id)
+    }
+
+    /// A click on a tile, which may be half of a double-click.
+    private func click(_ entry: DockEntry, event: NSEvent) {
+        let modifiers = event.modifierFlags
+        let action = settings.settings.doubleClickAction
+        heldClick?.cancel()
+        heldClick = nil
+        let outcome = DockClick.decide(
+            isApp: entry.isApp,
+            action: action,
+            hasModifiers: !modifiers.isDisjoint(with: [.command, .option, .control, .shift]),
+            clickCount: event.clickCount,
+            hidesOnClick: settings.settings.clickToHide && entry.kind != .finder && running.runningApp(for: entry.id)?.isActive == true
+        )
+        switch outcome {
+        case .activate:
+            activate(entry, modifiers: modifiers)
+        case .activateUnlessDoubled:
+            let held = DispatchWorkItem { [weak self] in
+                MainActor.assumeIsolated { self?.activate(entry, modifiers: modifiers) }
+            }
+            heldClick = held
+            DispatchQueue.main.asyncAfter(deadline: .now() + NSEvent.doubleClickInterval, execute: held)
+        case .doubleClick:
+            doubleClick(entry, action: action)
+        case .ignore:
+            break
+        }
+    }
+
+    private func doubleClick(_ entry: DockEntry, action: DoubleClickAction) {
+        let app = running.runningApp(for: entry.id)
+        switch action {
+        case .shortcuts:
+            showShortcuts(entry)
+        case .hide:
+            if let app { actions.hide(app) }
+        case .hideOthers:
+            actions.hideOthers(keeping: app)
+        case .off:
+            break
+        }
+    }
+
+    /// The app's shortcuts, in a panel above its tile: the commands in its
+    /// File menu, the user's own and the usual actions.
+    func showShortcuts(_ entry: DockEntry) {
+        guard entry.isApp, let identifier = bundleIdentifier(of: entry) else { return }
+        let anchor = dockView.screenRect(forItem: entry.id, resting: true)
+        guard anchor != .zero else { return }
+        let app = running.runningApp(for: entry.id)
+        let handlers = ShortcutsModel.Handlers(
+            run: { [weak self] command in
+                guard let self, let app = self.running.runningApp(for: entry.id) else { return }
+                self.actions.run(command, in: app)
+            },
+            open: { [weak self] shortcut in
+                self?.actions.run(shortcut, for: entry, running: self?.running.runningApp(for: entry.id))
+            },
+            setHidden: { [weak self] hidden in
+                guard let self, let app = self.running.runningApp(for: entry.id) else { return }
+                self.actions.setHidden(app, hidden)
+            },
+            hideOthers: { [weak self] in
+                self?.actions.hideOthers(keeping: self?.running.runningApp(for: entry.id))
+            },
+            reveal: { [weak self] in
+                self?.activate(entry, modifiers: .command)
+            },
+            quit: { [weak self] in
+                guard let self, let app = self.running.runningApp(for: entry.id) else { return }
+                self.quit(app, force: false)
+            },
+            allowAccessibility: { [weak self] in
+                self?.extras.requestAccessibility()
+                ExtrasMonitor.openPrivacySettings("Accessibility")
+            },
+            edit: { [weak self] in
+                self?.coordinator?.showShortcutsSettings(forApp: identifier, name: self?.name(for: entry.id) ?? "")
+            }
+        )
+        let model = ShortcutsModel(
+            name: name(for: entry.id),
+            icon: icons.image(for: entry, running: app),
+            shortcuts: userShortcuts.shortcuts(forApp: identifier),
+            isRunning: app != nil,
+            isHidden: app?.isHidden ?? false,
+            canQuit: entry.kind != .finder,
+            handlers: handlers
+        )
+        previews.close()
+        shortcutsPanel.show(model, anchor: anchor, position: settings.settings.position)
+        reevaluateAutoHide()
+        loadCommands(for: entry, into: model, attempts: 6)
+    }
+
+    /// Asks the helper for the app's commands. An app the double-click only
+    /// just started has no menus yet, so this tries again for a few seconds.
+    private func loadCommands(for entry: DockEntry, into model: ShortcutsModel, attempts: Int) {
+        Task { [weak self] in
+            guard let self else { return }
+            guard let app = self.running.runningApp(for: entry.id), app.isFinishedLaunching else {
+                model.commandState = attempts > 0 ? .loading : .none
+                if attempts > 0, self.shortcutsPanel.isShowing(model) {
+                    try? await Task.sleep(nanoseconds: 700_000_000)
+                    self.loadCommands(for: entry, into: model, attempts: attempts - 1)
+                }
+                return
+            }
+            model.isRunning = true
+            do {
+                let commands = try await self.actions.commands(of: app)
+                model.commands = commands
+                model.commandState = .none
+            } catch AgentClientError.refused(.notAllowed) {
+                // The helper also says this for an app it won't touch, which
+                // the permission can't change.
+                let trusted = (try? await self.actions.isAccessibilityTrusted()) ?? false
+                model.commandState = trusted ? .none : .needsAccessibility
+            } catch {
+                model.commandState = .none
+            }
+        }
+    }
+
+    private func bundleIdentifier(of entry: DockEntry) -> String? {
+        if entry.kind == .finder { return DockIdentity.finderBundleIdentifier }
+        return entry.app?.bundleIdentifier ?? running.runningApp(for: entry.id)?.bundleIdentifier
     }
 
     func quit(_ app: NSRunningApplication, force: Bool) {
@@ -971,7 +1111,7 @@ extension DockController: DockViewDelegate {
         guard let released, dragSourceID == nil else { return }
         let p = view.dockPoint(for: view.convert(event.locationInWindow, from: nil))
         guard engine.lastFrame.item(atU: p.u, v: p.v)?.id == released.id, let entry = entriesByID[released.id] else { return }
-        activate(entry, modifiers: event.modifierFlags)
+        click(entry, event: event)
     }
 
     func dockView(_ view: DockView, rightMouseDown event: NSEvent) {
@@ -1178,6 +1318,40 @@ extension DockController {
     func demoPointer(at point: NSPoint) {
         mouse.simulatedLocation = point
         mouse.refresh()
+    }
+
+    /// The panel double-clicking opens, for the self-test's checks.
+    var demoShortcutsPanel: ShortcutsPanel { shortcutsPanel }
+
+    /// Keeps a self-test's dock out of sight.
+    func demoHidePanel() {
+        panel.alphaValue = 0
+    }
+
+    /// Runs the dock's animations to their end: a window nobody can see
+    /// isn't given frames to run them with.
+    func demoSettle() {
+        for _ in 0..<240 { dockView.apply(engine.tick(1.0 / 60)) }
+    }
+
+    /// Where tile `id` is, if it's in the dock.
+    func demoTileRect(_ id: String) -> CGRect? {
+        dockView.iconRect(for: id)
+    }
+
+    /// A click on tile `id`, as the window delivers one: the press and the
+    /// release, through the same path as the real thing.
+    func demoSendClick(_ id: String, clickCount: Int) {
+        guard let rect = dockView.iconRect(for: id) else { return }
+        let point = dockView.convert(NSPoint(x: rect.midX, y: rect.midY), to: nil)
+        func event(_ type: NSEvent.EventType) -> NSEvent? {
+            NSEvent.mouseEvent(
+                with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: panel.windowNumber, context: nil, eventNumber: 0, clickCount: clickCount, pressure: 1
+            )
+        }
+        if let down = event(.leftMouseDown) { dockView.mouseDown(with: down) }
+        if let up = event(.leftMouseUp) { dockView.mouseUp(with: up) }
     }
 
     /// Clicks a tile: the press, then whatever a real click does.

@@ -42,12 +42,26 @@ enum DockPreferences {
     }
 
     /// The Dock only picks up most preferences when it starts, and launchd
-    /// relaunches it immediately — exactly what `killall Dock` does.
-    static func restartDock() {
+    /// relaunches it immediately — exactly what `killall Dock` does. Too soon
+    /// after the last restart this one waits instead of being dropped, or
+    /// the preferences just written would be ignored until the next login.
+    /// Only touched on the main queue.
+    static func restartDock(limiter: RateLimiter) {
+        guard limiter.allow("restart", every: 1.5) else {
+            guard !restartPending else { return }
+            restartPending = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                restartPending = false
+                restartDock(limiter: limiter)
+            }
+            return
+        }
         for dock in runningDocks() where dock.processIdentifier > 1 {
             kill(dock.processIdentifier, SIGTERM)
         }
     }
+
+    private static var restartPending = false
 
     /// Apps pinned in the macOS Dock, validated and filtered to ones that exist.
     static func pinnedApps() -> [ImportedDockApp] {

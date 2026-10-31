@@ -50,6 +50,8 @@ public enum SystemDockSchema {
         "static-only": .bool,
         "showhidden": .bool,
         "scroll-to-open": .bool,
+        "no-bouncing": .bool,
+        "allow-display-switching": .bool,
     ]
 
     /// The delay MarDock uses to keep the macOS Dock out of the way: with
@@ -57,7 +59,11 @@ public enum SystemDockSchema {
     public static let hiddenDelay: Double = 1000
 
     /// Keys MarDock changes to hide the macOS Dock (and restores afterwards).
-    public static let hidingKeys = ["autohide", "autohide-delay"]
+    /// The delay only covers the pointer resting at the Dock's edge. The Dock
+    /// also comes up to bounce an icon when an app asks for attention, and
+    /// moves to whichever display the pointer pushes down against, so those
+    /// two are turned off as well.
+    public static let hidingKeys = ["autohide", "autohide-delay", "no-bouncing", "allow-display-switching"]
 
     public static func isValid(key: String, value: SystemDockValue?) -> Bool {
         guard let kind = keys[key] else { return false }
@@ -93,7 +99,23 @@ public enum SystemDockSchema {
         [
             SystemDockChange(key: "autohide", value: .bool(true)),
             SystemDockChange(key: "autohide-delay", value: .number(hiddenDelay)),
+            SystemDockChange(key: "no-bouncing", value: .bool(true)),
+            SystemDockChange(key: "allow-display-switching", value: .bool(false)),
         ]
+    }
+
+    /// What `restoreChanges` needs to put the Dock back. Before MarDock hides
+    /// it that's the hiding keys as they stand. Once it's hidden the values
+    /// are MarDock's own, so `existing` (the backup made then) stays, and
+    /// only a key a newer MarDock added to the hiding keys joins it.
+    public static func backup(of values: [String: SystemDockValue], adding existing: [String: SystemDockValue]?) -> [String: SystemDockValue] {
+        guard var backup = existing else {
+            return values.filter { hidingKeys.contains($0.key) }
+        }
+        for change in hideChanges where backup[change.key] == nil {
+            if let value = values[change.key], value != change.value { backup[change.key] = value }
+        }
+        return backup
     }
 
     /// Changes that put back what was there before hiding. Keys that had no
@@ -105,10 +127,12 @@ public enum SystemDockSchema {
         }
     }
 
-    /// Whether the given preferences currently hide the macOS Dock the way MarDock does.
+    /// Whether the given preferences currently hide the macOS Dock the way
+    /// MarDock does. A Dock hidden by an older MarDock doesn't count, so
+    /// that it gets the rest of the keys.
     public static func looksHidden(_ values: [String: SystemDockValue]) -> Bool {
         guard case .bool(true)? = values["autohide"], case let .number(delay)? = values["autohide-delay"] else { return false }
-        return delay >= 100
+        return delay >= 100 && values["no-bouncing"] == .bool(true) && values["allow-display-switching"] == .bool(false)
     }
 }
 

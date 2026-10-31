@@ -38,14 +38,15 @@ runs inside the **App Sandbox**. Its only entitlements are:
 | --- | --- |
 | `com.apple.security.app-sandbox` | Confines the process. |
 | `com.apple.security.files.user-selected.read-write` | Lets MarDock open or save the files you pick in an Open or Save panel (apps to add, images for icons, theme and settings files), and nothing else. |
-| `com.apple.security.files.bookmarks.app-scope` | Lets MarDock remember a folder you chose to keep in the dock (a read-only security-scoped bookmark), so it can list that folder's newest files after a restart. |
+| `com.apple.security.files.bookmarks.app-scope` | Lets MarDock remember a folder you chose to keep in the dock, or a file or folder you made a shortcut for (a read-only security-scoped bookmark), so it can list that folder's newest files, or open that shortcut, after a restart. |
 | `com.apple.security.automation.apple-events` | Lets the app send Apple Events at all (the Hardened Runtime blocks them otherwise)… |
 | `com.apple.security.scripting-targets` | …and limits them to Finder's `com.apple.finder.trash` group: **Empty Trash** is the only command the sandbox lets MarDock send, to Finder only. macOS also asks you before the first one. |
 
 There is no network entitlement, so the sandbox refuses every socket the app
 could open. MarDock asks for no Accessibility or Screen Recording permission
-unless you turn on one of the extras below, Automation for Finder only when you
-first choose Empty Trash, and never for Input Monitoring or Full Disk Access.
+unless you turn on one of the extras below or allow apps' own commands on the
+shortcuts panel, Automation for Finder only when you first choose Empty Trash,
+and never for Input Monitoring or Full Disk Access.
 
 **Empty Trash** works like the macOS Dock's: MarDock asks Finder to empty the
 Trash, after the same question Finder asks (hold ⌥ to skip it), and Finder
@@ -58,10 +59,18 @@ fixed set of options, and changes nothing but MarDock's own dock. The
 bundle's `Metadata.appintents` folder is the description of those actions
 that Shortcuts reads: data, not code.
 
+**Your own shortcuts** run inside the same sandboxed app, and only when you
+click one on an app's panel. A website is limited to `http`, `https` and
+`mailto` links and a file to one you chose yourself, through a read-only
+bookmark, so a settings file from someone else can't put a `file:` link or an
+app-launching URL on the panel, and those two open in the tile's own app. A
+shortcut from the Shortcuts app is run by name, by Shortcuts itself.
+
 ### Opt-in extras
 
-Each is off until you turn it on in Settings ▸ Behaviour ▸ Extras, and the
-dock works the same without them.
+Each is off until you turn it on in Settings ▸ Extras, or for apps' own
+commands, allow it in Settings ▸ Shortcuts, and the dock works the same without
+them.
 
 | Extra | Permission | What it reads or does |
 | --- | --- | --- |
@@ -69,6 +78,7 @@ dock works the same without them.
 | Notification badges | Accessibility | The helper reads the badge text the macOS Dock shows on each app (`AXStatusLabel`), and that app's identifier. |
 | Minimized windows | Accessibility | The helper lists regular apps' minimized windows (title only) and, when you click one, unminimizes and raises it. The pid must belong to the claimed app, never Finder, other system UI or MarDock itself. |
 | Window previews | Screen Recording | The sandboxed app takes small pictures of the windows of the app you point at (ScreenCaptureKit), shows them, and keeps nothing. |
+| Apps' own commands | Accessibility | When you double-click an app, the helper reads one menu of that app (File, or Shell in Terminal) and returns the title and keyboard shortcut of its New and Open items. When you click one, it brings the app forward and chooses that item. No other menu is read, and of submenus only New ones are opened: Open Recent lists your files. |
 
 The Accessibility work runs in the helper, which isn't sandboxed. macOS
 records that permission for MarDock.app as a whole (the helper is part of
@@ -111,8 +121,8 @@ anything happens:
 
 | Operation | Validation |
 | --- | --- |
-| Read macOS Dock settings | Only the 15 keys in `SystemDockSchema`; values type-checked. |
-| Change macOS Dock settings | Each key must be in `SystemDockSchema`, with the right type and within range (e.g. `tilesize` 16–128, `mineffect` ∈ genie/scale/suck). No duplicates. Rate limited. The Dock — only the process running from `/System/Library/CoreServices/Dock.app`, whatever else claims its identifier — is restarted with `SIGTERM`, at most every 1.5 s. |
+| Read macOS Dock settings | Only the 17 keys in `SystemDockSchema`; values type-checked. |
+| Change macOS Dock settings | Each key must be in `SystemDockSchema`, with the right type and within range (e.g. `tilesize` 16–128, `mineffect` ∈ genie/scale/suck). No duplicates. Rate limited. The Dock — only the process running from `/System/Library/CoreServices/Dock.app`, whatever else claims its identifier — is restarted with `SIGTERM`, at most every 1.5 s; a restart asked for sooner waits its turn rather than being dropped. |
 | List apps in the macOS Dock | Parsed defensively from `persistent-apps`: bundle IDs and paths validated, list capped, nonexistent apps dropped. |
 | Quit an app | The pid must still belong to the claimed bundle ID (pids get reused), it must be a regular foreground app, and never Finder, the Dock, login window, other system UI, MarDock itself or the requesting process. Rate limited. |
 | Hide or show an app | Same pid/bundle-ID/regular-app checks (hiding Finder is allowed, as in the macOS Dock). Rate limited. |
@@ -124,6 +134,8 @@ anything happens:
 | List minimized windows | Needs Accessibility. Regular apps only, never the parts of macOS that can't be quit (Finder included) and never MarDock; titles cleaned and capped at 80 characters, 32 windows. Rate limited. |
 | Install an update | Only through its own XPC entry point, with the downloaded archive passed as an open file. The version must be well formed and newer than the installed copy; the archive is copied into a file only the helper writes, and the copy must match the SHA-256 the release published; every entry must be a plain file or folder inside `MarDock.app/` (no links, no `..`); the extracted app must have the same bundle identifier and exactly that version, and be validly signed (strict, all architectures, nested code) with the Hardened Runtime — and, when the installed copy is signed with a Developer ID, satisfy its designated requirement (same team). Only the app the helper is embedded in is replaced, never a path from the request, and not from a read-only volume or App Translocation. Rate limited. |
 | Bring back a window | Needs Accessibility. Same pid/bundle-ID/regular-app checks as quitting, so never Finder, other system UI or MarDock. Unminimizes, raises and brings forward that one window. Rate limited. |
+| List an app's commands | Needs Accessibility. Same pid/bundle-ID/regular-app checks as hiding (Finder is allowed), never MarDock. Reads the third menu in the menu bar, keeping only what `AppCommandFilter` allows: titles that start with New, Open or Reopen, or the usual shortcuts for those (⌘N, ⌘T, ⌘O with ⇧ or ⌥) for apps in other languages, and never a title with Close, Quit, Delete, Remove, Erase, Trash, Uninstall, Log Out, Sign Out, Restart or Shut Down in it. Titles cleaned and capped at 80 characters, 8 commands. Rate limited. |
+| Choose an app's command | Needs Accessibility. The same checks and the same reading: the helper looks the item up again and presses it only if `AppCommandFilter` still offers it, so what the request claims about the item counts for nothing. Rate limited. |
 
 There is no operation that takes a path to open, a command to run, a script to
 evaluate, or an arbitrary preference key to write.
@@ -193,6 +205,8 @@ its menu bar menu, or run:
 
 ```sh
 defaults delete com.apple.dock autohide-delay
+defaults delete com.apple.dock no-bouncing
+defaults delete com.apple.dock allow-display-switching
 defaults write com.apple.dock autohide -bool false
 killall Dock
 ```

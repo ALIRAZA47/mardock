@@ -120,6 +120,10 @@ enum DockMenus {
         }
 
         let app = controller.runningApp(for: entry)
+        menu.addItem(ClosureMenuItem("Shortcuts…", symbol: "command") { [weak controller] in
+            controller?.showShortcuts(entry)
+        })
+        menu.addItem(.separator())
         if let app {
             menu.addItem(ClosureMenuItem("Show", symbol: "macwindow") { [weak controller] in
                 controller?.activate(entry, modifiers: [])

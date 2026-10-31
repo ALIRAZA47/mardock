@@ -17,8 +17,10 @@ MarDock collects nothing.
   few apps you brought to the front (for the recent apps section: their names
   and locations only) and any icons you pick for apps, in MarDock's own
   sandbox container on your Mac
-  (`~/Library/Containers/io.github.aliraza47.MarDock`). Before hiding the macOS
-  Dock it also stores the two Dock settings it changes, so it can put them back.
+  (`~/Library/Containers/io.github.aliraza47.MarDock`). So are shortcuts you
+  make for apps: their titles and the websites, files or Shortcuts they open.
+  Before hiding the macOS Dock it also stores the Dock settings it changes, so
+  it can put them back.
   For updates it keeps whether the daily check is on, when it last checked
   and the last version it told you about.
 - **Keyboard shortcuts.** ⌃⌥1–9 are registered as system hot keys: macOS tells
@@ -38,8 +40,12 @@ MarDock collects nothing.
   which need Accessibility, and window previews, which need Screen Recording:
   small pictures of the windows of the app you point at, shown and never
   kept or sent anywhere.
+- **Apps' own commands.** With Accessibility allowed, double-clicking an app
+  reads the New and Open commands in its File menu, to show them, and chooses
+  the one you click. Nothing else in the menu is kept or even looked at past
+  its title, and nothing is stored.
 - **Permissions.** Accessibility and Screen Recording only for the extras
-  above, if you turn them on, and Automation for Finder the first time you
+  above and apps' own commands, if you use them, and Automation for Finder the first time you
   choose Empty Trash (MarDock asks Finder to empty it and can send Finder no
   other command). Input Monitoring, Full Disk Access,
   Contacts, Calendars, Photos, Location, Camera and Microphone are never used

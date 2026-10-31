@@ -38,9 +38,39 @@ enum SelfTest {
             }
             return true
         }
+        if arguments.contains("--self-test-ui") {
+            // Settings and the double-click, kept out of sight. Changes nothing but this build's own settings.
+            application.setActivationPolicy(.accessory)
+            Task { @MainActor in
+                await checkSettingsAndClicks()
+                let agent = AgentClient()
+                await checkAppCommands(agent: agent, trusted: (try? await agent.accessibilityTrusted(prompt: false)) ?? false)
+                print("SELFTEST RESULT \(failures == 0 ? "PASS" : "FAIL")")
+                fflush(stdout)
+                exit(failures == 0 ? 0 : 1)
+            }
+            return true
+        }
+        if arguments.contains("--self-test-system-dock") {
+            // Hiding and restoring the macOS Dock: it restarts twice, and ends as it began.
+            application.setActivationPolicy(.accessory)
+            let hold = arguments.firstIndex(of: "--hold").flatMap { $0 + 1 < arguments.count ? Double(arguments[$0 + 1]) : nil } ?? 0
+            Task { @MainActor in
+                await systemDockRoundTrip(agent: AgentClient(), hold: hold)
+                print("SELFTEST RESULT \(failures == 0 ? "PASS" : "FAIL")")
+                fflush(stdout)
+                exit(failures == 0 ? 0 : 1)
+            }
+            return true
+        }
         if arguments.contains("--demo") {
             application.setActivationPolicy(.accessory)
             DemoMode.start(arguments: arguments)
+            return true
+        }
+        if let index = arguments.firstIndex(of: "--render-settings"), index + 1 < arguments.count {
+            application.setActivationPolicy(.accessory)
+            SettingsSnapshots.start(directory: arguments[index + 1], arguments: arguments)
             return true
         }
         return false
@@ -182,7 +212,86 @@ enum SelfTest {
         // 8. The renderer survives a full frame in every theme.
         renderSmokeTest()
 
+        // 9. Settings keeps its size on every pane, and a double-click works.
+        await checkSettingsAndClicks()
+
         return failures == 0
+    }
+
+    private static func checkSettingsAndClicks() async {
+        let coordinator = AppCoordinator()
+        await checkSettingsWindow(coordinator)
+        await checkWelcomeWindow(coordinator)
+        await checkDoubleClick(coordinator)
+        for (query, anchor) in [("login", "openAtLogin"), ("startup", "openAtLogin"), ("hide dock", "replaceDock"), ("double", "doubleClick")] {
+            let found = SettingsTopic.matches(query).first
+            check("settings-search-\(query.replacingOccurrences(of: " ", with: "-"))", found?.anchor == anchor, found?.title ?? "nothing")
+        }
+    }
+
+    /// No pane may change the window's size: a pane whose content asked for
+    /// more once made the window so tall that About looked empty.
+    private static func checkSettingsWindow(_ coordinator: AppCoordinator) async {
+        let window = coordinator.demoSettingsWindow()
+        window.setFrameOrigin(NSPoint(x: 40_000, y: 40_000))
+        window.orderFrontRegardless()
+        defer { window.close() }
+        let size = window.frame.size
+        for pane in SettingsView.Pane.allCases {
+            coordinator.navigator.show(pane)
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            check("settings-size-\(pane.rawValue)", window.frame.size == size && coordinator.navigator.pane == pane, "\(window.frame.size)")
+        }
+    }
+
+    /// Get Started can't leave the window, but its content shouldn't need
+    /// scrolling either. Measured at the window's own width, where text wraps.
+    private static func checkWelcomeWindow(_ coordinator: AppCoordinator) async {
+        let window = coordinator.demoWelcomeWindow()
+        let width = window.contentLayoutRect.width
+        let content = NSHostingView(rootView: WelcomeContent(importDock: .constant(false), hideSystemDock: .constant(true), openAtLogin: .constant(true), appeared: true)
+            .frame(width: width)
+            .environmentObject(coordinator.settings))
+        let needed = content.fittingSize.height + WelcomeView.barHeight
+        let height = window.contentRect(forFrameRect: window.frame).height
+        check("welcome-fits", needed <= height, "needs \(needed), has \(height)")
+    }
+
+    /// Real clicks' path through the dock, on the app in front, whose window
+    /// a click brings to no new place.
+    private static func checkDoubleClick(_ coordinator: AppCoordinator) async {
+        // The settings go back as they were: `make selftest` shares the app's.
+        let saved = coordinator.settings.settings
+        defer { coordinator.settings.settings = saved }
+        coordinator.settings.update {
+            $0.doubleClickAction = .shortcuts
+            $0.autoHide = .off
+        }
+        let dock = coordinator.dock
+        dock.demoHidePanel()
+        coordinator.running.start()
+        dock.start()
+        dock.stopPointerTracking()
+        defer { dock.demoShortcutsPanel.close() }
+        try? await Task.sleep(nanoseconds: 500_000_000)
+        guard let front = NSWorkspace.shared.frontmostApplication, let identifier = front.bundleIdentifier else {
+            check("double-click", false, "no app in front")
+            return
+        }
+        dock.demoSettle()
+        // Finder's tile is always there, for when what's in front has none.
+        let frontTile = DockIdentity.app(identifier)
+        let tile = dock.demoTileRect(frontTile) == nil ? DockIdentity.finder : frontTile
+        let rect = dock.demoTileRect(tile)
+        check("double-click-target", (rect?.width ?? 0) > 8, "\(tile) at \(String(describing: rect))")
+        dock.demoSendClick(tile, clickCount: 1)
+        check("single-click-no-panel", !dock.demoShortcutsPanel.isShown)
+        dock.demoSendClick(tile, clickCount: 2)
+        check("double-click-opens-panel", dock.demoShortcutsPanel.isShown, identifier)
+        dock.demoShortcutsPanel.close()
+        coordinator.settings.update { $0.doubleClickAction = .off }
+        dock.demoSendClick(tile, clickCount: 2)
+        check("double-click-off", !dock.demoShortcutsPanel.isShown)
     }
 
     private static func checkFolderStack() {
@@ -310,6 +419,44 @@ enum SelfTest {
         let me = WindowInfo(pid: getpid(), bundleIdentifier: Bundle.main.bundleIdentifier ?? "io.github.aliraza47.MarDock", title: "", index: 0)
         await expectRefusal("helper-refuses-own-windows", .notAllowed) { try await agent.showWindow(me) }
         info("screen-recording", CGPreflightScreenCaptureAccess() ? "allowed" : "not allowed")
+        await checkAppCommands(agent: agent, trusted: trusted)
+    }
+
+    /// An app's own commands, on Finder, which always has a File menu. The
+    /// helper reads New and Open from it, and nothing else gets chosen.
+    private static func checkAppCommands(agent: AgentClient, trusted: Bool) async {
+        let own = Bundle.main.bundleIdentifier ?? "io.github.aliraza47.MarDock"
+        await expectRefusal("helper-refuses-own-commands", .notAllowed) {
+            _ = try await agent.appCommands(pid: getpid(), bundleIdentifier: own)
+        }
+        guard let finder = NSRunningApplication.runningApplications(withBundleIdentifier: DockIdentity.finderBundleIdentifier).first,
+              let identifier = finder.bundleIdentifier
+        else {
+            check("app-commands", false, "Finder isn't running")
+            return
+        }
+        let pid = finder.processIdentifier
+        guard trusted else {
+            await expectRefusal("helper-refuses-commands-without-permission", .notAllowed) {
+                _ = try await agent.appCommands(pid: pid, bundleIdentifier: identifier)
+            }
+            return
+        }
+        do {
+            let commands = try await agent.appCommands(pid: pid, bundleIdentifier: identifier)
+            check("app-commands", !commands.isEmpty, commands.map { "\($0.title) \($0.keys)" }.joined(separator: ", "))
+            await expectRefusal("helper-refuses-unoffered-command", .notFound) {
+                try await agent.runAppCommand(AppCommand(title: "Close Window"), pid: pid, bundleIdentifier: identifier)
+            }
+            if let first = commands.first {
+                // The helper allows one choice in 0.3 seconds, per app.
+                try? await Task.sleep(nanoseconds: 350_000_000)
+                try await agent.runAppCommand(first, pid: pid, bundleIdentifier: identifier)
+                check("app-command-runs", true, first.title)
+            }
+        } catch {
+            check("app-commands", false, error.localizedDescription)
+        }
     }
 
     /// The updater is reachable and validates its requests; the helper
@@ -426,7 +573,8 @@ enum SelfTest {
         return condition()
     }
 
-    private static func systemDockRoundTrip(agent: AgentClient) async {
+    /// `hold`: seconds to leave the Dock hidden, to try things on it meanwhile.
+    private static func systemDockRoundTrip(agent: AgentClient, hold: Double = 0) async {
         let suite = "io.github.aliraza47.MarDock.selftest"
         guard let defaults = UserDefaults(suiteName: suite) else {
             check("system-dock-hide", false, "no defaults suite")
@@ -438,11 +586,11 @@ enum SelfTest {
         let before = manager.values
         let hid = await manager.hide()
         check("system-dock-hide", hid && manager.looksHidden && manager.isHiddenByMarDock, "\(manager.values)")
-        try? await Task.sleep(nanoseconds: 1_700_000_000) // let the Dock restart (and the helper's limiter) settle
+        try? await Task.sleep(nanoseconds: 1_700_000_000 + UInt64(hold * 1_000_000_000)) // let the Dock restart (and the helper's limiter) settle
         let restored = await manager.restore()
         await manager.refresh()
         let after = manager.values
-        let same = after["autohide"] == before["autohide"] && after["autohide-delay"] == before["autohide-delay"]
+        let same = SystemDockSchema.hidingKeys.allSatisfy { after[$0] == before[$0] }
         check("system-dock-restore", restored && same && !manager.isHiddenByMarDock, "before \(before) after \(after)")
         defaults.removePersistentDomain(forName: suite)
         try? await Task.sleep(nanoseconds: 1_700_000_000)
@@ -543,6 +691,118 @@ private final class OnceBox<T>: @unchecked Sendable {
         continuation = nil
         lock.unlock()
         c?.resume(returning: value)
+    }
+}
+
+/// `--render-settings <folder>`: draws every Settings pane to a PNG, off
+/// screen, so a change to Settings can be looked at without Screen Recording
+/// and without a window appearing. The folder is in the sandbox container.
+/// Sample data goes into this build's defaults, so never run it under the
+/// real app's bundle identifier.
+@MainActor
+enum SettingsSnapshots {
+    private static var coordinator: AppCoordinator?
+    private static var window: NSWindow?
+
+    static func start(directory: String, arguments: [String]) {
+        guard Bundle.main.bundleIdentifier != AppInfo.fallbackBundleIdentifier else {
+            print("RENDER REFUSED: build with BUNDLE_ID set to something else, or this overwrites your real settings.")
+            exit(2)
+        }
+        func value(_ flag: String) -> String? {
+            guard let i = arguments.firstIndex(of: flag), i + 1 < arguments.count else { return nil }
+            return arguments[i + 1]
+        }
+        let coordinator = AppCoordinator()
+        Self.coordinator = coordinator
+        coordinator.settings.update {
+            $0 = DockSettings()
+            $0.theme = value("--theme").flatMap(ThemeID.init(rawValue:)) ?? .aurora
+            $0.autoHide = .smart
+        }
+        // Beyond every display, and never made key: nothing shows or takes focus.
+        let window = coordinator.demoSettingsWindow()
+        window.setFrameOrigin(NSPoint(x: 40_000, y: 40_000))
+        window.appearance = NSAppearance(named: value("--appearance") == "dark" ? .darkAqua : .aqua)
+        if let width = value("--width").flatMap(Double.init), let height = value("--height").flatMap(Double.init) {
+            window.setContentSize(NSSize(width: width, height: height))
+        }
+        window.orderFrontRegardless()
+        Self.window = window
+        guard let content = window.contentView else { return }
+
+        let panes = value("--panes").map { $0.split(separator: ",").compactMap { SettingsView.Pane(rawValue: String($0)) } } ?? SettingsView.Pane.allCases
+        let folder = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(directory, isDirectory: true)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        Task {
+            for pane in panes {
+                coordinator.navigator.show(pane)
+                try? await Task.sleep(nanoseconds: 1_200_000_000)
+                print("RENDER \(pane.rawValue) \(Int(content.bounds.width))×\(Int(content.bounds.height))")
+                write(content, to: folder.appendingPathComponent(pane.rawValue + ".png").path)
+            }
+            let welcome = coordinator.demoWelcomeWindow()
+            welcome.setFrameOrigin(NSPoint(x: 40_000, y: 41_000))
+            welcome.appearance = window.appearance
+            welcome.orderFrontRegardless()
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            if let view = welcome.contentView {
+                print("RENDER welcome \(Int(view.bounds.width))×\(Int(view.bounds.height)), content needs \(Int(view.fittingSize.height))")
+                write(view, to: folder.appendingPathComponent("welcome.png").path)
+            }
+            welcome.orderOut(nil)
+            for (name, model) in sampleModels() {
+                let view = NSHostingView(rootView: ShortcutsContent(model: model) {})
+                view.frame = NSRect(origin: .zero, size: view.fittingSize)
+                let holder = NSWindow(contentRect: NSRect(origin: NSPoint(x: 40_000, y: 40_000), size: view.frame.size), styleMask: [.borderless], backing: .buffered, defer: false)
+                holder.isReleasedWhenClosed = false
+                holder.appearance = window.appearance
+                holder.backgroundColor = .windowBackgroundColor
+                holder.contentView = view
+                holder.orderFrontRegardless()
+                try? await Task.sleep(nanoseconds: 700_000_000)
+                write(view, to: folder.appendingPathComponent(name + ".png").path)
+                holder.close()
+            }
+            print("RENDER DONE \(panes.count) panes")
+            fflush(stdout)
+            exit(0)
+        }
+    }
+
+    private static func sampleModels() -> [(String, ShortcutsModel)] {
+        let handlers = ShortcutsModel.Handlers(
+            run: { _ in }, open: { _ in }, setHidden: { _ in }, hideOthers: {}, reveal: {}, quit: {}, allowAccessibility: {}, edit: {}
+        )
+        let icon = NSWorkspace.shared.icon(forFile: "/System/Applications/Mail.app")
+        let shortcuts = [
+            UserShortcut(title: "GitHub", action: .website(URL(string: "https://github.com")!)),
+            UserShortcut(title: "Run Morning Routine", action: .shortcut("Morning Routine")),
+        ].compactMap { $0 }
+        let full = ShortcutsModel(name: "Safari", icon: icon, shortcuts: shortcuts, isRunning: true, isHidden: false, canQuit: true, handlers: handlers)
+        full.commands = [
+            AppCommand(title: "New Window", keys: "⌘N"),
+            AppCommand(title: "New Private Window", keys: "⇧⌘N"),
+            AppCommand(title: "New Tab", keys: "⌘T"),
+            AppCommand(title: "Open File…", keys: "⌘O"),
+        ]
+        full.commandState = .none
+        let locked = ShortcutsModel(name: "Terminal", icon: icon, shortcuts: [], isRunning: true, isHidden: false, canQuit: true, handlers: handlers)
+        locked.commandState = .needsAccessibility
+        let waiting = ShortcutsModel(name: "Notes", icon: icon, shortcuts: [], isRunning: false, isHidden: false, canQuit: true, handlers: handlers)
+        return [("panel-full", full), ("panel-locked", locked), ("panel-waiting", waiting)]
+    }
+
+    static func write(_ view: NSView, to path: String) {
+        view.layoutSubtreeIfNeeded()
+        let bounds = view.bounds
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: Int(bounds.width * 2), pixelsHigh: Int(bounds.height * 2),
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+        ) else { return }
+        rep.size = bounds.size
+        view.cacheDisplay(in: bounds, to: rep)
+        try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
     }
 }
 

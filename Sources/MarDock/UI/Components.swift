@@ -26,7 +26,7 @@ struct FooterText: View {
 
     var body: some View {
         Text(text)
-            .font(.callout)
+            .font(.system(size: 11.5))
             .foregroundStyle(.secondary)
             .multilineTextAlignment(.leading)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -129,28 +129,24 @@ struct FeatureRow: View {
 
 // MARK: - Theme gallery
 
-struct ThemeGallery: View {
+/// The built-in themes, for a grid.
+struct ThemeCards: View {
     /// The built-in theme in use, or nil while one of the user's own is.
     let selection: ThemeID?
     let select: (ThemeID) -> Void
 
-    private let columns = [GridItem(.adaptive(minimum: 118, maximum: 160), spacing: 14)]
-
     var body: some View {
-        LazyVGrid(columns: columns, spacing: 14) {
-            ForEach(ThemeID.allCases) { theme in
-                Button {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { select(theme) }
-                } label: {
-                    ThemeCard(theme: theme, selected: selection == theme)
-                }
-                .buttonStyle(.plain)
-                .help(theme.tagline)
-                .accessibilityLabel(Text("\(theme.displayName) theme"))
-                .accessibilityAddTraits(selection == theme ? .isSelected : [])
+        ForEach(ThemeID.allCases) { theme in
+            Button {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { select(theme) }
+            } label: {
+                ThemeCard(theme: theme, selected: selection == theme)
             }
+            .buttonStyle(.plain)
+            .help(theme.tagline)
+            .accessibilityLabel(Text("\(theme.displayName) theme"))
+            .accessibilityAddTraits(selection == theme ? .isSelected : [])
         }
-        .padding(.vertical, 4)
     }
 }
 

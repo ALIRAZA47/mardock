@@ -123,6 +123,7 @@ public struct DockSettings: Codable, Equatable, Sendable {
     public var restoreSystemDockOnQuit = true
     public var showInFullScreen = false
     public var launchShortcut: LaunchShortcut = .controlOption
+    public var doubleClickAction: DoubleClickAction = .shortcuts
     public var showRecentApps = true
     public var recentAppsCount = 3
     // Extras that need a permission, all off until the user turns them on.
@@ -190,7 +191,7 @@ public struct DockSettings: Codable, Equatable, Sendable {
         case position, display, autoHide, revealDelay, showLabels, showRunningApps, showTrash
         case clickToHide, bounceOnLaunch, clickRipple, reflections, indicatorStyle, dimHiddenApps
         case animationSpeed, hideSystemDock, restoreSystemDockOnQuit, showInFullScreen
-        case launchShortcut, showRecentApps, recentAppsCount
+        case launchShortcut, doubleClickAction, showRecentApps, recentAppsCount
         case showBadges, showMinimizedWindows, windowPreviews, showTrashFull
     }
 
@@ -225,6 +226,7 @@ public struct DockSettings: Codable, Equatable, Sendable {
         s.restoreSystemDockOnQuit = value(.restoreSystemDockOnQuit, s.restoreSystemDockOnQuit)
         s.showInFullScreen = value(.showInFullScreen, s.showInFullScreen)
         s.launchShortcut = value(.launchShortcut, s.launchShortcut)
+        s.doubleClickAction = value(.doubleClickAction, s.doubleClickAction)
         s.showRecentApps = value(.showRecentApps, s.showRecentApps)
         s.recentAppsCount = value(.recentAppsCount, s.recentAppsCount)
         s.showBadges = value(.showBadges, s.showBadges)

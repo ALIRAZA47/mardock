@@ -3,12 +3,61 @@ import SwiftUI
 
 /// First-run onboarding: a live preview, the three promises, three choices.
 struct WelcomeView: View {
+    /// What the window leaves for the bar with Get Started, under the content.
+    static let barHeight: CGFloat = 69
+
     @EnvironmentObject private var coordinator: AppCoordinator
-    @EnvironmentObject private var store: SettingsStore
-    @State private var importDock = true
-    @State private var hideSystemDock = true
+    @State private var importDock: Bool
+    @State private var hideSystemDock: Bool
     @State private var openAtLogin = true
     @State private var appeared = false
+
+    init(importDock: Bool, hideSystemDock: Bool) {
+        _importDock = State(initialValue: importDock)
+        _hideSystemDock = State(initialValue: hideSystemDock)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Get Started stays outside the part that scrolls. This window
+            // can't be resized, so text running longer than expected must
+            // never be able to push the way out of it out of sight.
+            ScrollView {
+                WelcomeContent(importDock: $importDock, hideSystemDock: $hideSystemDock, openAtLogin: $openAtLogin, appeared: appeared)
+            }
+            .scrollIndicators(.automatic)
+            .ignoresSafeArea(edges: .top)
+            Divider()
+            HStack {
+                Spacer()
+                Button {
+                    coordinator.completeOnboarding(importDock: importDock, hideSystemDock: hideSystemDock, openAtLogin: openAtLogin)
+                } label: {
+                    Text("Get Started")
+                        .frame(minWidth: 140)
+                }
+                .keyboardShortcut(.defaultAction)
+                .controlSize(.large)
+                .buttonStyle(.borderedProminent)
+            }
+            .padding(.horizontal, 24)
+            .frame(height: Self.barHeight - 1)
+        }
+        .frame(minWidth: 680, minHeight: 520)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .onAppear {
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.85).delay(0.15)) { appeared = true }
+        }
+    }
+}
+
+/// Everything on the welcome screen but the button.
+struct WelcomeContent: View {
+    @EnvironmentObject private var store: SettingsStore
+    @Binding var importDock: Bool
+    @Binding var hideSystemDock: Bool
+    @Binding var openAtLogin: Bool
+    let appeared: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -62,30 +111,12 @@ struct WelcomeView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 28)
             .padding(.top, 22)
+            .padding(.bottom, 20)
             .opacity(appeared ? 1 : 0)
             .offset(y: appeared ? 0 : 12)
-
-            Spacer(minLength: 12)
-
-            HStack {
-                Spacer()
-                Button {
-                    coordinator.completeOnboarding(importDock: importDock, hideSystemDock: hideSystemDock, openAtLogin: openAtLogin)
-                } label: {
-                    Text("Get Started")
-                        .frame(minWidth: 140)
-                }
-                .keyboardShortcut(.defaultAction)
-                .controlSize(.large)
-                .buttonStyle(.borderedProminent)
-            }
-            .padding(24)
-        }
-        .frame(minWidth: 680, minHeight: 620)
-        .onAppear {
-            withAnimation(.spring(response: 0.6, dampingFraction: 0.85).delay(0.15)) { appeared = true }
         }
     }
 }

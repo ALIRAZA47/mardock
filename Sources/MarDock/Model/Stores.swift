@@ -31,6 +31,9 @@ final class SettingsStore: ObservableObject {
         set { defaults.set(newValue, forKey: Keys.onboarded) }
     }
 
+    /// False until something has changed a setting.
+    var hasSavedSettings: Bool { defaults.data(forKey: Keys.settings) != nil }
+
     func update(_ change: (inout DockSettings) -> Void) {
         var copy = settings
         change(&copy)
@@ -309,6 +312,51 @@ final class RecentAppsStore: ObservableObject {
         guard updated != recents else { return }
         recents = updated
         defaults.set(PinnedApp.encodeList(updated.apps), forKey: key)
+    }
+}
+
+/// The user's own shortcuts for each app, shown on its shortcuts panel.
+@MainActor
+final class UserShortcutStore: ObservableObject {
+    @Published private(set) var list: UserShortcutList
+
+    private let defaults: UserDefaults
+    private let key = "userShortcuts.v1"
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        list = UserShortcutList.decode(defaults.data(forKey: key))
+    }
+
+    func shortcuts(forApp bundleIdentifier: String) -> [UserShortcut] {
+        list.shortcuts(forApp: bundleIdentifier)
+    }
+
+    func add(_ shortcut: UserShortcut, toApp bundleIdentifier: String) {
+        var updated = list
+        updated.add(shortcut, toApp: bundleIdentifier)
+        replace(with: updated)
+    }
+
+    func remove(_ id: String, fromApp bundleIdentifier: String) {
+        var updated = list
+        updated.remove(id, fromApp: bundleIdentifier)
+        replace(with: updated)
+    }
+
+    func replace(with updated: UserShortcutList) {
+        list = updated
+        defaults.set(updated.encoded(), forKey: key)
+    }
+
+    /// The file or folder the user just chose, remembered as a bookmark.
+    static func action(forFile url: URL) -> UserShortcut.Action? {
+        guard let bookmark = try? url.bookmarkData(
+            options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess],
+            includingResourceValuesForKeys: nil,
+            relativeTo: nil
+        ) else { return nil }
+        return .file(path: url.path, bookmark: bookmark)
     }
 }
 

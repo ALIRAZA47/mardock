@@ -44,13 +44,7 @@ final class SystemDockManager: ObservableObject {
             // Already out of the way (e.g. MarDock relaunching): don't restart
             // the Dock again, which would make it flash.
             if self.looksHidden { return true }
-            if !self.isHiddenByMarDock {
-                var backup: [String: SystemDockValue] = [:]
-                for key in SystemDockSchema.hidingKeys {
-                    if let value = self.values[key] { backup[key] = value }
-                }
-                self.saveBackup(backup)
-            }
+            self.saveBackup(SystemDockSchema.backup(of: self.values, adding: self.isHiddenByMarDock ? self.loadBackup() : nil))
             try await self.agent.applySystemDock(SystemDockSchema.hideChanges, restartDock: true)
             self.defaults.set(true, forKey: self.hiddenKey)
             return true
