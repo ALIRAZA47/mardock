@@ -2,6 +2,7 @@
 /.build
 /.build-selftest
 /build
+/site/_site
 /.swiftpm
 *.xcodeproj
 xcuserdata/

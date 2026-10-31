@@ -1,0 +1,128 @@
+<!--
+title: MarDock: a dock for macOS that's fluid, beautiful and private by design
+summary: MarDock replaces the macOS Dock with physically based magnification, seven themes and shortcuts on every app. It runs sandboxed, with no network access.
+-->
+<section class="hero" aria-labelledby="hero-title">
+  <iframe class="live-dock" id="live-dock" src="/playground/?embed=hero&amp;theme=aurora&amp;appearance=dark" title="A live MarDock. Hover to magnify, click an app to open it, right-click for its menu."></iframe>
+  <noscript><img class="live-dock-still" src="/assets/img/dock-aurora.webp" alt="MarDock along the bottom of the screen, magnifying the Photos icon"></noscript>
+  <div class="hero-inner">
+    <div class="hero-text">
+      <h1 id="hero-title">A dock that moves like it's made of something real.</h1>
+      <p class="hero-lede">MarDock replaces the macOS Dock with physically based magnification, seven themes and shortcuts on every app. It runs sandboxed, with no network access.</p>
+      <div class="actions">
+        <a class="button primary" href="{{dmg}}">Download for Mac</a>
+        <a class="button" href="/docs/">Read the docs</a>
+      </div>
+      <p class="hero-meta">Version {{version}} · macOS 14 or later · Apple silicon and Intel · Free and open source</p>
+    </div>
+    <figure class="photo hero-photo">
+      <picture>
+        <source srcset="/assets/img/settings-appearance-dark.webp" media="(prefers-color-scheme: dark)">
+        <img src="/assets/img/settings-appearance.webp" width="1880" height="1320" alt="MarDock's Settings, on the Appearance page, with a live dock preview and the theme gallery">
+      </picture>
+      <div class="lights" aria-hidden="true"><i></i><i></i><i></i></div>
+    </figure>
+  </div>
+  <div class="hero-themes" role="group" aria-label="Try a theme on the dock below" hidden>
+    <button type="button" data-theme="glass">Glass</button>
+    <button type="button" data-theme="liquid">Liquid</button>
+    <button type="button" data-theme="aurora" aria-pressed="true">Aurora</button>
+    <button type="button" data-theme="midnight">Midnight</button>
+    <button type="button" data-theme="sunset">Sunset</button>
+    <button type="button" data-theme="mirror">Mirror</button>
+    <button type="button" data-theme="minimal">Minimal</button>
+  </div>
+</section>
+
+<main id="content" class="windows">
+
+  <section class="win motion" aria-labelledby="motion">
+    <div class="win-bar"><div class="lights" aria-hidden="true"><i></i><i></i><i></i></div><span>The real app, recorded on every build</span></div>
+    <div class="win-body split">
+      <video id="tour" src="/assets/video/tour.mp4" poster="/assets/img/tour-poster.webp" width="1024" height="768" muted loop playsinline preload="none" controls aria-label="A tour of the dock: magnification, opening an app, and themes."></video>
+      <div class="prose">
+        <h2 id="motion">Whatever is under your pointer stays under it.</h2>
+        <p>Most docks scale icons and re-centre the row, so the icon you're aiming at slides away. MarDock warps the dock's axis around the pointer instead.</p>
+        <p>Magnification, bounces, presses and auto-hide are all real springs, solved in closed form, so they stay smooth at any refresh rate, 120 Hz included.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="win themes" aria-labelledby="themes">
+    <div class="win-bar"><div class="lights" aria-hidden="true"><i></i><i></i><i></i></div><span>Themes</span></div>
+    <div class="win-body">
+      <div class="prose narrow">
+        <h2 id="themes">Seven looks, or make your own.</h2>
+        <p>The theme editor changes the glass, tint, drifting colours, edge, neon glow, shadows and accent with a live preview. Themes are small files you can share.</p>
+      </div>
+      <div class="gallery">
+        <figure><img src="/assets/img/dock-glass.webp" width="1024" height="192" loading="lazy" alt="MarDock in the Glass theme"><figcaption><strong>Glass</strong> · Frosted glass that adapts to light and dark.</figcaption></figure>
+        <figure><img src="/assets/img/dock-liquid.webp" width="1024" height="192" loading="lazy" alt="MarDock in the Liquid theme"><figcaption><strong>Liquid</strong> · Clear, refractive glass with a moving highlight.</figcaption></figure>
+        <figure><img src="/assets/img/dock-aurora.webp" width="1024" height="192" loading="lazy" alt="MarDock in the Aurora theme"><figcaption><strong>Aurora</strong> · Slow ribbons of colour under smoked glass.</figcaption></figure>
+        <figure><img src="/assets/img/dock-midnight.webp" width="1024" height="192" loading="lazy" alt="MarDock in the Midnight theme"><figcaption><strong>Midnight</strong> · Deep smoke with a neon edge.</figcaption></figure>
+        <figure><img src="/assets/img/dock-sunset.webp" width="1024" height="192" loading="lazy" alt="MarDock in the Sunset theme"><figcaption><strong>Sunset</strong> · Warm glass, tinted like golden hour.</figcaption></figure>
+        <figure><img src="/assets/img/dock-mirror.webp" width="1024" height="192" loading="lazy" alt="MarDock in the Mirror theme"><figcaption><strong>Mirror</strong> · A glossy floor with reflections.</figcaption></figure>
+        <figure><img src="/assets/img/dock-minimal.webp" width="1024" height="192" loading="lazy" alt="MarDock in the Minimal theme"><figcaption><strong>Minimal</strong> · No shelf. Just your icons, floating.</figcaption></figure>
+      </div>
+    </div>
+  </section>
+
+  <section class="win shortcuts" aria-labelledby="shortcuts">
+    <div class="win-bar"><div class="lights" aria-hidden="true"><i></i><i></i><i></i></div><span>Shortcuts</span></div>
+    <div class="win-body split">
+      <div class="prose">
+        <h2 id="shortcuts">Double-click any app for its shortcuts.</h2>
+        <p>A small panel opens above the tile with the app's own New and Open commands and their keyboard shortcuts, the websites, files and Shortcuts you added for it, and Hide, Quit and the rest.</p>
+        <p>Prefer the keyboard? <kbd>⌃⌥1</kbd> to <kbd>⌃⌥9</kbd> open the first nine apps in the dock.</p>
+        <p><a href="/docs/shortcuts/">More about shortcuts</a></p>
+      </div>
+      <picture class="breakout">
+        <source srcset="/assets/img/panel-light.webp" media="(prefers-color-scheme: light)">
+        <img src="/assets/img/panel-dark.webp" width="660" height="736" loading="lazy" alt="The shortcuts panel for Safari: New Window, New Private Window, New Tab and Open File, then GitHub and Run Morning Routine, then Hide, Hide Others, Show in Finder and Quit">
+      </picture>
+    </div>
+  </section>
+
+  <section class="replace" aria-labelledby="dock">
+    <figure class="photo">
+      <picture>
+        <source srcset="/assets/img/settings-general-dark.webp" media="(prefers-color-scheme: dark)">
+        <img src="/assets/img/settings-general.webp" width="1880" height="1320" loading="lazy" alt="Settings, on the General page: Open at login and Replace the macOS Dock at the top, with search in the sidebar">
+      </picture>
+      <div class="lights" aria-hidden="true"><i></i><i></i><i></i></div>
+    </figure>
+    <div class="win">
+      <div class="win-bar"><div class="lights" aria-hidden="true"><i></i><i></i><i></i></div><span>macOS Dock</span></div>
+      <div class="win-body prose">
+        <h2 id="dock">One switch replaces the macOS Dock.</h2>
+        <p>It stays hidden when an app bounces for attention and when your pointer crosses displays. Your original Dock settings are saved first and put back exactly when you turn it off or quit.</p>
+        <p>Search finds any setting, and MarDock opens at login.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="win privacy" aria-labelledby="privacy">
+    <div class="win-bar"><div class="lights" aria-hidden="true"><i></i><i></i><i></i></div><span>Privacy &amp; Security</span></div>
+    <div class="win-body">
+      <h2 id="privacy">A dock doesn't need your data, so MarDock can't reach it.</h2>
+      <dl class="promises">
+        <div><dt>App Sandbox</dt><dd>On. It can't read your files or other apps' data.</dd></div>
+        <div><dt>Network access</dt><dd>None. macOS blocks every connection from the dock.</dd></div>
+        <div><dt>Permissions</dt><dd>None by default. Extras ask only if you turn them on.</dd></div>
+        <div><dt>Hardened Runtime</dt><dd>On, with no exceptions, on every executable.</dd></div>
+        <div><dt>Third-party code</dt><dd>None. Pure Swift, AppKit and Core Animation.</dd></div>
+        <div><dt>Tracking</dt><dd>None. No analytics, crash reporting or accounts.</dd></div>
+      </dl>
+      <p><a href="/docs/privacy/">How this is checked on every build</a></p>
+    </div>
+  </section>
+
+  <section class="win get" aria-labelledby="get">
+    <div class="win-body">
+      <img src="/assets/img/icon.webp" width="104" height="104" alt="" loading="lazy">
+      <h2 id="get">Put it on your Mac.</h2>
+      <a class="button primary" href="{{dmg}}">Download MarDock {{version}}</a>
+      <p>This build is signed ad-hoc, so macOS asks once: click Done, then Open Anyway in System Settings ▸ Privacy &amp; Security. <a href="/docs/install/">Install guide</a></p>
+    </div>
+  </section>
+</main>

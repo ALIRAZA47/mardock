@@ -1,0 +1,50 @@
+<!--
+title: Shortcuts
+summary: The double-click panel, your own shortcuts for each app, keyboard launching, and the Shortcuts app.
+-->
+<p class="lede">Quick ways into your apps, by mouse and by keyboard. Settings for all of this are in <strong>Settings ▸ Shortcuts</strong>.</p>
+
+<h2 id="double-click">Double-click an app</h2>
+<p>Double-click any app in the dock and a small panel opens above its tile. The first click still opens the app or brings it forward, as usual. Right-click an app and choose <strong>Shortcuts…</strong> for the same panel at any time.</p>
+<figure>
+  <picture>
+    <source srcset="/assets/img/panel-dark.webp" media="(prefers-color-scheme: dark)">
+    <img src="/assets/img/panel-light.webp" width="660" height="736" loading="lazy" alt="The shortcuts panel for Safari" style="max-width: 330px; box-shadow: none">
+  </picture>
+</figure>
+<p>The panel has up to three parts:</p>
+<ul>
+  <li><strong>The app's own commands:</strong> New Window, New Tab, Open and the like, with their keyboard shortcuts.</li>
+  <li><strong>Your shortcuts</strong> for that app.</li>
+  <li><strong>The usual actions:</strong> Hide, Hide Others, Show in Finder and Quit.</li>
+</ul>
+<p>Prefer something else? <strong>Double-clicking an app</strong> can instead hide it, hide other apps, or do nothing.</p>
+
+<h3 id="app-commands">The app's own commands</h3>
+<p>These come from the app's File menu (Shell in Terminal), and reading them needs Accessibility. Choose <strong>Allow…</strong> in Settings ▸ Shortcuts, or the row on the panel, to turn it on. Without it, the rest of the panel works as normal.</p>
+<p>MarDock's helper reads that one menu, and keeps only commands that create or open something. It never offers Delete, Quit or the like, and it never opens Open Recent, which lists your files. <a href="/docs/privacy/#helper">More on the helper</a>.</p>
+
+<h2 id="your-own">Your own shortcuts</h2>
+<p>In Settings ▸ Shortcuts, choose an app and then <strong>Add Shortcut</strong>, or click the plus on its panel. Each app can have up to 12.</p>
+<div class="table-wrap"><table>
+  <tr><th>Kind</th><th>What it does</th></tr>
+  <tr><td>Website</td><td>Opens the address in that app, if it can show one.</td></tr>
+  <tr><td>File or Folder</td><td>Opens it in that app. Handy for a project in your editor.</td></tr>
+  <tr><td>Shortcut from the Shortcuts app</td><td>Runs it by name.</td></tr>
+</table></div>
+
+<h2 id="keyboard">Opening apps from the keyboard</h2>
+<p>By default, <kbd>⌃⌥1</kbd> to <kbd>⌃⌥9</kbd> open the first nine apps: 1 is Finder, then your apps in dock order. In Settings you can switch to <kbd>⌥</kbd> or <kbd>⌥⌘</kbd>, or turn this off.</p>
+<p>No permission is needed: macOS tells MarDock about these key combinations and nothing else. With <kbd>⌥</kbd> alone, those keys stop typing characters such as ¡ and ™ in other apps.</p>
+
+<h2 id="shortcuts-app">Shortcuts, Siri and Focus</h2>
+<p>MarDock adds these actions to the Shortcuts app:</p>
+<ul>
+  <li>Switch Dock Profile</li>
+  <li>Set Dock Theme</li>
+  <li>Set Dock Position</li>
+  <li>Set Dock Hiding</li>
+  <li>Set Dock Magnification</li>
+  <li>Open MarDock Settings</li>
+</ul>
+<p>There's also a Focus filter, <strong>Set Dock Profile</strong>, so a Work Focus can bring up your Work dock, and the dock goes back when the Focus ends. Add it in System Settings ▸ Focus.</p>

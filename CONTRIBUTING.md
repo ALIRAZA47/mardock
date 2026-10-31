@@ -53,7 +53,8 @@ macOS runner. Its artifacts (**MarDock-app**, **screenshots**,
 | `Tests/MarDockCoreTests/` | Unit tests for `MarDockCore`. |
 | `App/` | Info.plists, entitlements, the icon. |
 | `scripts/` | Build and sign, the security audit, the self-test, CI helpers. |
-| `playground/index.html` | A browser port of the engine and the themes' numbers. Keep it in step with `MarDockCore` and `Theme.swift`. |
+| `playground/index.html` | A browser port of the engine and the themes' numbers, which is also the website's live demo. Keep it in step with `MarDockCore` and `Theme.swift`. |
+| `site/` | The website and docs at [mardock.alirazakhan.me](https://mardock.alirazakhan.me). `python3 site/build.py` builds it into `site/_site` with nothing but Python, and the Pages workflow publishes it. If a change alters what the app does, update its page in `site/docs/`. |
 
 ## What a good change looks like
 

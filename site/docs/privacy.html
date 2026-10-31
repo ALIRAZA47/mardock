@@ -1,0 +1,39 @@
+<!--
+title: Privacy and security
+summary: What MarDock can and can't do, what it stores, and how that's checked on every build.
+-->
+<p class="lede">MarDock collects nothing. A dock doesn't need your data, so it's built so that it can't reach it. <strong>Settings ▸ Privacy &amp; Security</strong> shows all of this live, read from macOS.</p>
+
+<figure>
+  <img src="/assets/img/settings-privacy.webp" width="1880" height="1320" loading="lazy" alt="Settings, on the Privacy and Security page, with live checks for the sandbox, network access and code signature">
+</figure>
+
+<h2 id="sandbox">The dock</h2>
+<ul>
+  <li><strong>App Sandbox:</strong> the dock can't read your files or other apps' data, except files you pick yourself in an Open or Save panel and folders you add to the dock.</li>
+  <li><strong>No network:</strong> the dock has no network entitlement, so macOS blocks every connection.</li>
+  <li><strong>Hardened Runtime,</strong> with no exceptions, on every executable.</li>
+  <li><strong>No third-party code:</strong> pure Swift, AppKit and Core Animation.</li>
+</ul>
+
+<h2 id="helper">The helper</h2>
+<p>The sandbox rightly stops an app from quitting other apps or changing the macOS Dock. A tiny helper does those few things and nothing else. It only accepts connections from code matching this exact app's signature, and every request is validated: it has no way to run a command, open a path it's given, or write an arbitrary preference.</p>
+<p>With Accessibility allowed, it also reads the macOS Dock's badges, the titles of minimized windows, and the New and Open commands in an app's File menu when you double-click it, and it does what you click.</p>
+
+<h2 id="permissions">Permissions</h2>
+<div class="table-wrap"><table>
+  <tr><th>Permission</th><th>When MarDock uses it</th></tr>
+  <tr><td>Accessibility</td><td>Only for badges, minimized windows and apps' own commands, if you use them.</td></tr>
+  <tr><td>Screen Recording</td><td>Only for window previews, if you turn them on.</td></tr>
+  <tr><td>Automation</td><td>Only for Finder, the first time you choose Empty Trash. The sandbox lets MarDock send that one command and no other.</td></tr>
+</table></div>
+<p>MarDock never asks for Input Monitoring, Full Disk Access, Contacts, Calendars, Photos, Location, Camera or Microphone.</p>
+
+<h2 id="data">What it stores</h2>
+<p>Your settings, what's in your dock and each profile, your themes and shortcuts, the last few apps you used (their names and locations only) and any icons you pick. All of it stays on your Mac, inside MarDock's sandbox container. There are no analytics, no crash reporting, no accounts and no update checks unless you ask.</p>
+<p>To remove everything, quit MarDock and delete <code>~/Library/Containers/io.github.aliraza47.MarDock</code>.</p>
+
+<h2 id="checked">Checked on every build</h2>
+<p>A security audit runs on every change and fails the build if an entitlement is added, or if any binary imports an API it shouldn't. A self-test then checks the design against the real system: that the sandbox blocks the network, and that the helper refuses anything outside its list. You can run both yourself: see <a href="/docs/build/">Build from source</a>.</p>
+<p>In the app, <strong>Verify App Integrity</strong> re-checks the signatures of the app and its helper.</p>
+<p>The full detail is in <a href="{{github}}/blob/main/SECURITY.md">SECURITY.md</a> and <a href="{{github}}/blob/main/PRIVACY.md">PRIVACY.md</a>. Report a security problem through <a href="{{github}}/security/advisories/new">private vulnerability reporting</a>, not a public issue.</p>

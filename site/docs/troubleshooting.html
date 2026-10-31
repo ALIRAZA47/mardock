@@ -1,0 +1,41 @@
+<!--
+title: Troubleshooting
+summary: Fixes for the things that most often go wrong, and how to remove MarDock.
+-->
+<p class="lede">If none of this helps, <a href="{{github}}/issues/new?template=bug_report.yml">report a bug</a> with your macOS and MarDock versions. You'll find those in Settings ▸ About.</p>
+
+<h2 id="dock-showing">I can still see the macOS Dock</h2>
+<ol>
+  <li>Check that <strong>Replace the macOS Dock</strong> is on in <a href="/docs/macos-dock/">Settings ▸ General</a>. The tile says whether it's hidden.</li>
+  <li>Make sure you're on version 1.2 or later. Earlier versions missed two ways the Dock could come back.</li>
+  <li>Check that MarDock is running. Quitting it restores the Dock, unless you've turned that off.</li>
+</ol>
+
+<h2 id="no-dock">I've got no dock at all</h2>
+<p>MarDock isn't running, and the macOS Dock is still hidden. Open MarDock with Spotlight, or follow <a href="/docs/macos-dock/#restore">Getting it back</a>.</p>
+
+<h2 id="login">MarDock doesn't open at login</h2>
+<ol>
+  <li>Check that <strong>Open at login</strong> is on in Settings ▸ General.</li>
+  <li>If it says macOS is waiting for your approval, choose <strong>Open Login Items…</strong> and allow MarDock.</li>
+  <li>Make sure MarDock is in your Applications folder, so it's still there at your next login.</li>
+</ol>
+
+<h2 id="permissions">Badges, minimized windows or previews stopped working</h2>
+<p>That usually means an update reset the permission. Open <a href="/docs/extras/">Settings ▸ Extras</a>, which says what's missing, and allow MarDock again in System Settings.</p>
+
+<h2 id="commands">The shortcuts panel doesn't show an app's commands</h2>
+<p>Reading them needs Accessibility: use <strong>Allow…</strong> in Settings ▸ Shortcuts. Some apps have nothing to show, because their third menu isn't a File menu or has no New or Open commands. The rest of the panel still works.</p>
+
+<h2 id="verify">macOS can't verify MarDock</h2>
+<p>That's expected for releases signed ad-hoc. Follow the <a href="/docs/install/#open-anyway">Open Anyway</a> steps.</p>
+
+<h2 id="windows-under">Windows go under the dock</h2>
+<p>macOS doesn't let other apps reserve screen space. Set <strong>Automatically hide</strong> to <strong>When a window overlaps</strong> in <a href="/docs/layout/#hiding">Settings ▸ Behaviour</a>.</p>
+
+<h2 id="remove">Removing MarDock</h2>
+<ol>
+  <li>Quit MarDock from its menu bar icon, which restores the macOS Dock.</li>
+  <li>Move MarDock from Applications to the Trash.</li>
+  <li>To remove your settings too, delete <code>~/Library/Containers/io.github.aliraza47.MarDock</code>.</li>
+</ol>

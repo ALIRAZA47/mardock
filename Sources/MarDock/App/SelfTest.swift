@@ -774,12 +774,15 @@ enum SettingsSnapshots {
         let handlers = ShortcutsModel.Handlers(
             run: { _ in }, open: { _ in }, setHidden: { _ in }, hideOthers: {}, reveal: {}, quit: {}, allowAccessibility: {}, edit: {}
         )
-        let icon = NSWorkspace.shared.icon(forFile: "/System/Applications/Mail.app")
+        func icon(_ identifier: String) -> NSImage {
+            NSWorkspace.shared.urlForApplication(withBundleIdentifier: identifier).map { NSWorkspace.shared.icon(forFile: $0.path) }
+                ?? NSWorkspace.shared.icon(for: .applicationBundle)
+        }
         let shortcuts = [
             UserShortcut(title: "GitHub", action: .website(URL(string: "https://github.com")!)),
             UserShortcut(title: "Run Morning Routine", action: .shortcut("Morning Routine")),
         ].compactMap { $0 }
-        let full = ShortcutsModel(name: "Safari", icon: icon, shortcuts: shortcuts, isRunning: true, isHidden: false, canQuit: true, handlers: handlers)
+        let full = ShortcutsModel(name: "Safari", icon: icon("com.apple.Safari"), shortcuts: shortcuts, isRunning: true, isHidden: false, canQuit: true, handlers: handlers)
         full.commands = [
             AppCommand(title: "New Window", keys: "⌘N"),
             AppCommand(title: "New Private Window", keys: "⇧⌘N"),
@@ -787,9 +790,9 @@ enum SettingsSnapshots {
             AppCommand(title: "Open File…", keys: "⌘O"),
         ]
         full.commandState = .none
-        let locked = ShortcutsModel(name: "Terminal", icon: icon, shortcuts: [], isRunning: true, isHidden: false, canQuit: true, handlers: handlers)
+        let locked = ShortcutsModel(name: "Terminal", icon: icon("com.apple.Terminal"), shortcuts: [], isRunning: true, isHidden: false, canQuit: true, handlers: handlers)
         locked.commandState = .needsAccessibility
-        let waiting = ShortcutsModel(name: "Notes", icon: icon, shortcuts: [], isRunning: false, isHidden: false, canQuit: true, handlers: handlers)
+        let waiting = ShortcutsModel(name: "Notes", icon: icon("com.apple.Notes"), shortcuts: [], isRunning: false, isHidden: false, canQuit: true, handlers: handlers)
         return [("panel-full", full), ("panel-locked", locked), ("panel-waiting", waiting)]
     }
 
