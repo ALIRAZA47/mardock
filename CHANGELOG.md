@@ -8,6 +8,11 @@ downloads, checksums and build provenance are on the
 
 ## [Unreleased]
 
+### Added
+
+- **A website.** [mardock.alirazakhan.me](https://mardock.alirazakhan.me) has
+  the full documentation and a live demo of the dock you can try in a browser.
+
 ## [1.2.0] - 2026-10-31
 
 ### Added
