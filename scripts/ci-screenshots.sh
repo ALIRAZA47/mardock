@@ -1,6 +1,6 @@
 #!/bin/bash
 # CI only: photographs every theme using the self-test build's --demo mode,
-# plus a side dock, three Settings panes, the theme editor and the Welcome
+# plus a side dock, four Settings panes, the theme editor and the Welcome
 # window. The images are uploaded as a build artifact.
 set -uo pipefail
 
@@ -14,6 +14,12 @@ mkdir -p "$OUT"
 defaults write com.apple.dock autohide -bool true
 defaults write com.apple.dock autohide-delay -float 1000
 killall Dock 2>/dev/null || true
+# The self-test leaves Finder windows open (the Trash, and one it opens with
+# New Finder Window), which would cover the windows photographed below.
+# Relaunch Finder without them, as the tour does.
+defaults write com.apple.finder ApplePersistenceIgnoreState -bool true
+rm -rf "$HOME/Library/Saved Application State/com.apple.finder.savedState"
+killall Finder 2>/dev/null || true
 # Screenshots should show real translucency.
 echo "reduceTransparency: $(defaults read com.apple.universalaccess reduceTransparency 2>&1)"
 defaults write com.apple.universalaccess reduceTransparency -bool false 2>&1 || true
@@ -55,7 +61,7 @@ fi
 kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
 
 # Windows: name[:settings pane].
-for shot in settings settings:apps settings:behavior theme-editor welcome; do
+for shot in settings settings:apps settings:behavior settings:shortcuts theme-editor welcome; do
   window="${shot%%:*}"
   name="${shot/:/-}"
   args=(--demo --theme aurora --window "$window")
