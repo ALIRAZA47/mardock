@@ -8,6 +8,8 @@ downloads, checksums and build provenance are on the
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-31
+
 ### Added
 
 - **Double-click shortcuts.** Double-click an app in the dock for a small
@@ -109,6 +111,7 @@ The first release.
   tiny allowlisted XPC helper, no third-party dependencies, and a security
   audit and self-test that run in CI on every change.
 
-[Unreleased]: https://github.com/ALIRAZA47/mardock/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/ALIRAZA47/mardock/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/ALIRAZA47/mardock/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/ALIRAZA47/mardock/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/ALIRAZA47/mardock/releases/tag/v1.0.0
