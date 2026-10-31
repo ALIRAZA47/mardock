@@ -105,6 +105,18 @@ final class AgentClient {
         try await expectDone(.showWindow(window))
     }
 
+    /// An app's own New and Open commands.
+    func appCommands(pid: pid_t, bundleIdentifier: String) async throws -> [AppCommand] {
+        guard case let .commands(commands) = try await send(.appCommands(pid: pid, bundleIdentifier: bundleIdentifier)) else {
+            throw AgentClientError.unexpectedReply
+        }
+        return Array(commands.filter(\.isValid).prefix(AppCommandFilter.maxCount))
+    }
+
+    func runAppCommand(_ command: AppCommand, pid: pid_t, bundleIdentifier: String) async throws {
+        try await expectDone(.runAppCommand(pid: pid, bundleIdentifier: bundleIdentifier, command: command))
+    }
+
     // MARK: Updates
 
     /// Hands a downloaded release to the helper, which checks it again and

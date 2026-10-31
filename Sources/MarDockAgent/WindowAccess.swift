@@ -83,21 +83,26 @@ enum WindowAccess {
 
     // MARK: Reading attributes
 
-    private static func value(_ element: AXUIElement, _ attribute: String) -> CFTypeRef? {
+    static func value(_ element: AXUIElement, _ attribute: String) -> CFTypeRef? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success else { return nil }
         return value
     }
 
-    private static func elements(_ element: AXUIElement, _ attribute: String) -> [AXUIElement] {
+    static func elements(_ element: AXUIElement, _ attribute: String) -> [AXUIElement] {
         (value(element, attribute) as? [AXUIElement]) ?? []
     }
 
-    private static func string(_ element: AXUIElement, _ attribute: String) -> String? {
+    static func element(_ element: AXUIElement, _ attribute: String) -> AXUIElement? {
+        guard let found = value(element, attribute), CFGetTypeID(found) == AXUIElementGetTypeID() else { return nil }
+        return (found as! AXUIElement)
+    }
+
+    static func string(_ element: AXUIElement, _ attribute: String) -> String? {
         value(element, attribute) as? String
     }
 
-    private static func bool(_ element: AXUIElement, _ attribute: String) -> Bool? {
+    static func bool(_ element: AXUIElement, _ attribute: String) -> Bool? {
         (value(element, attribute) as? NSNumber)?.boolValue
     }
 

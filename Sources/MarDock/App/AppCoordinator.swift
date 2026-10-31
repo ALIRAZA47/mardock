@@ -14,6 +14,7 @@ final class AppCoordinator: NSObject, ObservableObject {
     let profiles: ProfileStore
     let recents = RecentAppsStore()
     let customIcons = CustomIconStore()
+    let userShortcuts = UserShortcutStore()
     let themes = ThemeStore()
     let folders = FolderStacks()
     let running = RunningAppsMonitor()
@@ -27,6 +28,7 @@ final class AppCoordinator: NSObject, ObservableObject {
     let dock: DockController
     let security: SecurityStatus
     let updates: UpdateController
+    let navigator = SettingsNavigator()
 
     private var statusItem: StatusItemController?
     private var settingsWindow: NSWindow?
@@ -41,7 +43,7 @@ final class AppCoordinator: NSObject, ObservableObject {
         actions = AppActions(agent: agent, pins: pins)
         extras = ExtrasMonitor(agent: agent, settings: settings)
         dock = DockController(
-            settings: settings, pins: pins, recents: recents, customIcons: customIcons, themes: themes, folders: folders,
+            settings: settings, pins: pins, recents: recents, customIcons: customIcons, userShortcuts: userShortcuts, themes: themes, folders: folders,
             running: running, icons: icons, actions: actions, systemDock: systemDock, extras: extras
         )
         security = SecurityStatus(agent: agent)
@@ -92,9 +94,10 @@ final class AppCoordinator: NSObject, ObservableObject {
             .sink { [weak self] hide in self?.syncSystemDock(hide: hide) }
             .store(in: &cancellables)
 
-        if settings.hasCompletedOnboarding {
-            syncSystemDock(hide: settings.settings.hideSystemDock)
-        } else {
+        // Whatever the welcome screen is waiting for, a choice made in
+        // Settings holds: quitting put the macOS Dock back, so it hides again.
+        syncSystemDock(hide: settings.settings.hideSystemDock)
+        if !settings.hasCompletedOnboarding {
             showWelcome()
         }
     }
@@ -150,6 +153,16 @@ final class AppCoordinator: NSObject, ObservableObject {
         let appItem = NSMenuItem()
         appItem.submenu = appMenu
         main.addItem(appItem)
+
+        // Text fields find ⌘C, ⌘V and the rest through these.
+        let editMenu = NSMenu(title: "Edit")
+        editMenu.addItem(NSMenuItem(title: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
+        editMenu.addItem(NSMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
+        editMenu.addItem(NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
+        editMenu.addItem(NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
+        let editItem = NSMenuItem()
+        editItem.submenu = editMenu
+        main.addItem(editItem)
 
         let windowMenu = NSMenu(title: "Window")
         windowMenu.addItem(NSMenuItem(title: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w"))
@@ -208,7 +221,7 @@ final class AppCoordinator: NSObject, ObservableObject {
         for id in customIcons.iconIDs {
             icons[id] = customIcons.pngData(for: id)
         }
-        return MarDockBackup(settings: settings.settings, items: pins.items, themes: themes.custom, profiles: profiles.snapshot(), icons: icons)
+        return MarDockBackup(settings: settings.settings, items: pins.items, themes: themes.custom, profiles: profiles.snapshot(), icons: icons, userShortcuts: userShortcuts.list)
     }
 
     /// Replaces the dock, settings, themes and icons with a backup's. Choices
@@ -219,6 +232,7 @@ final class AppCoordinator: NSObject, ObservableObject {
             themes.save(theme)
         }
         settings.settings = settings.settings.importing(backup.settings)
+        userShortcuts.replace(with: backup.userShortcuts)
         if let saved = backup.profiles {
             profiles.replace(with: saved)
         } else {
@@ -233,38 +247,71 @@ final class AppCoordinator: NSObject, ObservableObject {
 
     // MARK: - Windows
 
-    func showSettings() {
-        if settingsWindow == nil {
-            let root = SettingsView()
-                .environmentObject(self)
-                .environmentObject(settings)
-                .environmentObject(pins)
-                .environmentObject(profiles)
-                .environmentObject(extras)
-                .environmentObject(customIcons)
-                .environmentObject(themes)
-                .environmentObject(systemDock)
-                .environmentObject(loginItem)
-                .environmentObject(security)
-                .environmentObject(updates)
-            let window = makeWindow(title: "MarDock Settings", size: NSSize(width: 820, height: 600), content: root)
-            window.setFrameAutosaveName("MarDockSettings")
-            settingsWindow = window
-        }
-        present(settingsWindow)
+    /// The Settings window's content, with everything it reads.
+    var settingsRoot: some View {
+        SettingsView()
+            .environmentObject(self)
+            .environmentObject(settings)
+            .environmentObject(pins)
+            .environmentObject(profiles)
+            .environmentObject(extras)
+            .environmentObject(customIcons)
+            .environmentObject(userShortcuts)
+            .environmentObject(themes)
+            .environmentObject(systemDock)
+            .environmentObject(loginItem)
+            .environmentObject(security)
+            .environmentObject(updates)
+            .environmentObject(navigator)
     }
 
+    func showSettings() {
+        present(makeSettingsWindowIfNeeded())
+    }
+
+    private func makeSettingsWindowIfNeeded() -> NSWindow {
+        if let settingsWindow { return settingsWindow }
+        let window = makeWindow(title: "MarDock Settings", size: NSSize(width: 940, height: 660), content: settingsRoot)
+        window.setFrameAutosaveName("MarDockSettings")
+        settingsWindow = window
+        return window
+    }
+
+    #if MARDOCK_SELFTEST
+    /// The real windows, for the self-test to order in where they can't be seen.
+    func demoSettingsWindow() -> NSWindow { makeSettingsWindowIfNeeded() }
+    func demoWelcomeWindow() -> NSWindow { makeWelcomeWindowIfNeeded() }
+    #endif
+
     func showWelcome() {
-        if welcomeWindow == nil {
-            let root = WelcomeView()
+        present(makeWelcomeWindowIfNeeded())
+    }
+
+    private func makeWelcomeWindowIfNeeded() -> NSWindow {
+        if let welcomeWindow { return welcomeWindow }
+        do {
+            // Someone who has been using MarDock without finishing this
+            // starts from what they already have: a dock they've arranged is
+            // only replaced if they ask.
+            let root = WelcomeView(
+                importDock: !pins.hasSavedList,
+                hideSystemDock: settings.hasSavedSettings ? settings.settings.hideSystemDock : true
+            )
                 .environmentObject(self)
                 .environmentObject(settings)
                 .environmentObject(loginItem)
-            let window = makeWindow(title: "Welcome to MarDock", size: NSSize(width: 720, height: 640), content: root)
+            let window = makeWindow(title: "Welcome to MarDock", size: NSSize(width: 720, height: 780), content: root)
             window.styleMask.remove(.resizable)
             welcomeWindow = window
+            // Closing it counts as an answer: it doesn't come back.
+            NotificationCenter.default.publisher(for: NSWindow.willCloseNotification, object: window)
+                .sink { [weak self] _ in
+                    self?.settings.hasCompletedOnboarding = true
+                    self?.welcomeWindow = nil
+                }
+                .store(in: &cancellables)
+            return window
         }
-        present(welcomeWindow)
     }
 
     func showAbout() {
@@ -279,14 +326,25 @@ final class AppCoordinator: NSObject, ObservableObject {
         }
     }
 
-    /// Opens Settings on one of its panes.
-    func showSettings(pane: SettingsView.Pane) {
+    /// Opens Settings on the Shortcuts pane, with this app chosen.
+    func showShortcutsSettings(forApp bundleIdentifier: String, name: String) {
+        navigator.shortcutsTarget = SettingsNavigator.ShortcutsTarget(bundleIdentifier: bundleIdentifier, name: name)
+        showSettings(pane: .shortcuts, spotlight: "yourShortcuts")
+    }
+
+    /// Opens Settings on one of its panes, and on one setting there if
+    /// `spotlight` names it.
+    func showSettings(pane: SettingsView.Pane, spotlight: String? = nil) {
+        navigator.show(pane, spotlight: spotlight)
         showSettings()
-        NotificationCenter.default.post(name: .showSettingsPane, object: pane.rawValue)
     }
 
     private func makeWindow<Content: View>(title: String, size: NSSize, content: Content) -> NSWindow {
         let hosting = NSHostingController(rootView: content)
+        // The window's size is `size`, then the user's. Left to itself, SwiftUI
+        // resizes it to suit the content: thousands of points tall for a pane
+        // with wrapping text, with that pane's content centred far out of view.
+        hosting.sizingOptions = []
         let window = NSWindow(contentViewController: hosting)
         window.title = title
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
@@ -294,7 +352,7 @@ final class AppCoordinator: NSObject, ObservableObject {
         window.titleVisibility = .hidden
         window.isReleasedWhenClosed = false
         window.setContentSize(size)
-        window.contentMinSize = NSSize(width: min(size.width, 720), height: min(size.height, 520))
+        window.contentMinSize = NSSize(width: min(size.width, 820), height: min(size.height, 540))
         window.center()
         return window
     }
@@ -320,11 +378,6 @@ final class OneShot {
         action = nil
         pending?()
     }
-}
-
-extension Notification.Name {
-    /// Settings switches to the pane whose raw value is the notification's object.
-    static let showSettingsPane = Notification.Name("MarDock.showSettingsPane")
 }
 
 /// What the Privacy & Security pane shows, gathered from the system itself

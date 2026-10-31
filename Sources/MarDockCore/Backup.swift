@@ -128,13 +128,16 @@ public struct MarDockBackup: Sendable {
     public var profiles: DockProfiles?
     /// PNG data of custom icons, by app tile id.
     public var icons: [String: Data]
+    /// The user's own shortcuts for each app.
+    public var userShortcuts: UserShortcutList
 
-    public init(settings: DockSettings, items: [DockItem], themes: [ThemeRecipe], profiles: DockProfiles?, icons: [String: Data]) {
+    public init(settings: DockSettings, items: [DockItem], themes: [ThemeRecipe], profiles: DockProfiles?, icons: [String: Data], userShortcuts: UserShortcutList = UserShortcutList()) {
         self.settings = settings.sanitized()
         self.items = Array(DockItem.unique(items).prefix(DockItem.maxCount))
         self.themes = Array(themes.filter { !$0.isBuiltIn }.map { $0.sanitized() }.prefix(Self.maxThemes))
         self.profiles = profiles
         self.icons = Self.validIcons(icons)
+        self.userShortcuts = userShortcuts
     }
 
     public enum ReadError: Error, Equatable {
@@ -152,14 +155,15 @@ public struct MarDockBackup: Sendable {
             items: (file.items ?? []).compactMap(\.value),
             themes: (file.themes ?? []).compactMap(\.value),
             profiles: file.profiles,
-            icons: file.icons ?? [:]
+            icons: file.icons ?? [:],
+            userShortcuts: file.userShortcuts ?? UserShortcutList()
         )
     }
 
     public func encoded() -> Data? {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
-        return try? encoder.encode(Output(format: Self.format, version: Self.version, settings: settings, items: items, themes: themes, profiles: profiles, icons: icons))
+        return try? encoder.encode(Output(format: Self.format, version: Self.version, settings: settings, items: items, themes: themes, profiles: profiles, icons: icons, userShortcuts: userShortcuts))
     }
 
     static func validIcons(_ icons: [String: Data]) -> [String: Data] {
@@ -181,8 +185,9 @@ public struct MarDockBackup: Sendable {
         var themes: [Lossy<ThemeRecipe>]?
         var profiles: DockProfiles?
         var icons: [String: Data]?
+        var userShortcuts: UserShortcutList?
 
-        private enum CodingKeys: String, CodingKey { case format, version, settings, items, themes, profiles, icons }
+        private enum CodingKeys: String, CodingKey { case format, version, settings, items, themes, profiles, icons, userShortcuts }
 
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -193,6 +198,7 @@ public struct MarDockBackup: Sendable {
             themes = try? c.decodeIfPresent([Lossy<ThemeRecipe>].self, forKey: .themes)
             profiles = try? c.decodeIfPresent(DockProfiles.self, forKey: .profiles)
             icons = try? c.decodeIfPresent([String: Data].self, forKey: .icons)
+            userShortcuts = try? c.decodeIfPresent(UserShortcutList.self, forKey: .userShortcuts)
         }
     }
 
@@ -204,5 +210,6 @@ public struct MarDockBackup: Sendable {
         var themes: [ThemeRecipe]
         var profiles: DockProfiles?
         var icons: [String: Data]
+        var userShortcuts: UserShortcutList
     }
 }

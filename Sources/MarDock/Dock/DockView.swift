@@ -677,18 +677,20 @@ final class DockView: NSView {
 
     // MARK: - Geometry helpers
 
-    func iconRect(for id: String) -> CGRect? {
+    /// Where a tile is, or with `resting` where it comes back to from a bounce.
+    func iconRect(for id: String, resting: Bool = false) -> CGRect? {
         guard let item = lastFrame.item(id: id) else { return nil }
         let axis = DockAxis(position: configuration.position, width: Double(bounds.width), height: Double(bounds.height))
+        let lift = resting ? 0 : item.lift
         let r = axis.rect(
             u0: item.center - item.size / 2, u1: item.center + item.size / 2,
-            v0: item.baseline + item.lift, v1: item.baseline + item.lift + item.size
+            v0: item.baseline + lift, v1: item.baseline + lift + item.size
         )
         return CGRect(x: r.x, y: r.y, width: r.width, height: r.height)
     }
 
-    func screenRect(forItem id: String) -> NSRect {
-        guard let rect = iconRect(for: id), let window else { return .zero }
+    func screenRect(forItem id: String, resting: Bool = false) -> NSRect {
+        guard let rect = iconRect(for: id, resting: resting), let window else { return .zero }
         return window.convertToScreen(convert(rect, to: nil))
     }
 

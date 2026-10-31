@@ -53,6 +53,17 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             })
         }
 
+        let loginItem = coordinator.loginItem
+        loginItem.refresh()
+        menu.addItem(ClosureMenuItem("Open at Login", symbol: "power.circle", state: loginItem.isOn ? .on : .off) { [weak loginItem, weak coordinator] in
+            guard let loginItem else { return }
+            loginItem.setEnabled(!loginItem.isOn)
+            // Only Settings can say why it didn't work, or what's left to do.
+            if loginItem.needsApproval || loginItem.lastError != nil {
+                coordinator?.showSettings(pane: .general, spotlight: "openAtLogin")
+            }
+        })
+
         menu.addItem(.separator())
         let settingsItem = ClosureMenuItem("Settings…", symbol: "gearshape") { [weak coordinator] in
             coordinator?.showSettings()

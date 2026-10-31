@@ -95,6 +95,18 @@ final class AppActions {
     func hide(_ app: NSRunningApplication) { setHidden(app, true) }
     func unhide(_ app: NSRunningApplication) { setHidden(app, false) }
 
+    /// Hides every ordinary app except `kept`.
+    func hideOthers(keeping kept: NSRunningApplication?) {
+        for app in NSWorkspace.shared.runningApplications
+        where app.activationPolicy == .regular && app != kept && app != .current && !app.isHidden {
+            hide(app)
+        }
+    }
+
+    func isAccessibilityTrusted() async throws -> Bool {
+        try await agent.accessibilityTrusted(prompt: false)
+    }
+
     func quit(_ app: NSRunningApplication, force: Bool) async throws {
         guard let identifier = app.bundleIdentifier else { throw AgentClientError.refused(.notAllowed) }
         try await agent.quit(pid: app.processIdentifier, bundleIdentifier: identifier, force: force)
@@ -114,6 +126,57 @@ final class AppActions {
         }
     }
 
+    /// Opens one of the user's shortcuts. Websites and files go to the
+    /// tile's own app; a shortcut from the Shortcuts app runs there.
+    func run(_ shortcut: UserShortcut, for entry: DockEntry, running: NSRunningApplication?) {
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        switch shortcut.action {
+        case let .website(url):
+            guard let app = appURL(for: entry, running: running) else { return beep() }
+            NSWorkspace.shared.open([url], withApplicationAt: app, configuration: configuration, completionHandler: nil)
+        case let .file(_, bookmark):
+            var stale = false
+            guard let app = appURL(for: entry, running: running),
+                  let url = try? URL(resolvingBookmarkData: bookmark, options: [.withSecurityScope], relativeTo: nil, bookmarkDataIsStale: &stale),
+                  url.startAccessingSecurityScopedResource()
+            else { return beep() }
+            NSWorkspace.shared.open([url], withApplicationAt: app, configuration: configuration) { _, _ in
+                url.stopAccessingSecurityScopedResource()
+            }
+        case let .shortcut(name):
+            var link = URLComponents()
+            link.scheme = "shortcuts"
+            link.host = "run-shortcut"
+            link.queryItems = [URLQueryItem(name: "name", value: name)]
+            guard let url = link.url else { return beep() }
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    private func beep() {
+        NSSound.beep()
+    }
+
+    /// What's left of an app's File menu after `AppCommandFilter`. Needs
+    /// Accessibility, like everything else the helper reads from other apps.
+    func commands(of app: NSRunningApplication) async throws -> [AppCommand] {
+        guard let identifier = app.bundleIdentifier else { return [] }
+        return try await agent.appCommands(pid: app.processIdentifier, bundleIdentifier: identifier)
+    }
+
+    func run(_ command: AppCommand, in app: NSRunningApplication) {
+        guard let identifier = app.bundleIdentifier else { return }
+        Task {
+            do {
+                try await agent.runAppCommand(command, pid: app.processIdentifier, bundleIdentifier: identifier)
+            } catch {
+                appLog.error("Couldn't run the app's command: \(error.localizedDescription, privacy: .public)")
+                NSSound.beep()
+            }
+        }
+    }
+
     func openTrash() {
         Task {
             do {
@@ -127,6 +190,8 @@ final class AppActions {
 }
 
 /// "Open at login", via the modern ServiceManagement API (no helper needed).
+/// macOS keeps the login item with the app's identifier, so it survives an
+/// update and follows the app if it moves.
 @MainActor
 final class LoginItemManager: ObservableObject {
     @Published private(set) var status: SMAppService.Status = SMAppService.mainApp.status
@@ -134,6 +199,24 @@ final class LoginItemManager: ObservableObject {
 
     var isEnabled: Bool { status == .enabled }
     var needsApproval: Bool { status == .requiresApproval }
+
+    /// A copy run from a disk image or Downloads may not be there at the next login.
+    var isInApplicationsFolder: Bool {
+        let folders = FileManager.default.urls(for: .applicationDirectory, in: .allDomainsMask).map(\.standardizedFileURL.path)
+        return folders.contains(Bundle.main.bundleURL.standardizedFileURL.deletingLastPathComponent().path)
+    }
+
+    /// For the switch: on while macOS is only waiting for approval, so
+    /// turning it off takes the request back.
+    var isOn: Bool { isEnabled || needsApproval }
+
+    var summary: String {
+        switch status {
+        case .enabled: return "MarDock opens when you log in."
+        case .requiresApproval: return "macOS is waiting for you to approve this in System Settings."
+        default: return "Off. You'd start MarDock yourself after a restart."
+        }
+    }
 
     func refresh() {
         status = SMAppService.mainApp.status

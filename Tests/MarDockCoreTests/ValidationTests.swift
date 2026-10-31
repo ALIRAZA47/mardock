@@ -365,6 +365,8 @@ final class SystemDockTests: XCTestCase {
         XCTAssertEqual(restore, [
             SystemDockChange(key: "autohide", value: .bool(false)),
             SystemDockChange(key: "autohide-delay", value: nil),
+            SystemDockChange(key: "no-bouncing", value: nil),
+            SystemDockChange(key: "allow-display-switching", value: nil),
         ])
         // A tampered backup is never written back.
         let tampered = SystemDockSchema.restoreChanges(from: ["autohide": .string("rm -rf"), "autohide-delay": .number(-5)])
@@ -372,9 +374,41 @@ final class SystemDockTests: XCTestCase {
     }
 
     func testHiddenDetection() {
-        XCTAssertTrue(SystemDockSchema.looksHidden(["autohide": .bool(true), "autohide-delay": .number(1000)]))
-        XCTAssertFalse(SystemDockSchema.looksHidden(["autohide": .bool(true), "autohide-delay": .number(0.2)]))
+        let hidden: [String: SystemDockValue] = [
+            "autohide": .bool(true), "autohide-delay": .number(1000), "no-bouncing": .bool(true), "allow-display-switching": .bool(false),
+        ]
+        XCTAssertTrue(SystemDockSchema.looksHidden(hidden))
+        XCTAssertFalse(SystemDockSchema.looksHidden(hidden.merging(["autohide-delay": .number(0.2)]) { $1 }))
         XCTAssertFalse(SystemDockSchema.looksHidden([:]))
+        // As an older MarDock left it: not hidden yet, so it gets the other keys.
+        XCTAssertFalse(SystemDockSchema.looksHidden(["autohide": .bool(true), "autohide-delay": .number(1000)]))
+    }
+
+    func testHidingCoversTheDocksOtherWaysBack() {
+        let changes = Dictionary(uniqueKeysWithValues: SystemDockSchema.hideChanges.map { ($0.key, $0.value) })
+        XCTAssertEqual(changes["no-bouncing"], .bool(true), "or an app asking for attention brings the Dock up")
+        XCTAssertEqual(changes["allow-display-switching"], .bool(false), "or pushing against another display's edge moves it there")
+        XCTAssertEqual(Set(changes.keys), Set(SystemDockSchema.hidingKeys))
+        XCTAssertTrue(SystemDockSchema.looksHidden(changes.compactMapValues { $0 }))
+    }
+
+    func testBackupBeforeHidingKeepsTheHidingKeysAsTheyAre() {
+        let values: [String: SystemDockValue] = ["autohide": .bool(true), "tilesize": .number(48), "no-bouncing": .bool(true)]
+        // Even a value that's the same as MarDock's: it was the user's.
+        XCTAssertEqual(SystemDockSchema.backup(of: values, adding: nil), ["autohide": .bool(true), "no-bouncing": .bool(true)])
+    }
+
+    func testBackupWhenAlreadyHiddenKeepsTheOriginal() {
+        // Hidden by an older MarDock: its values aren't the user's.
+        let values: [String: SystemDockValue] = ["autohide": .bool(true), "autohide-delay": .number(1000)]
+        let existing: [String: SystemDockValue] = ["autohide": .bool(false)]
+        XCTAssertEqual(SystemDockSchema.backup(of: values, adding: existing), existing)
+        // A key that older one didn't touch is still the user's own.
+        let own = values.merging(["allow-display-switching": .bool(true)]) { $1 }
+        XCTAssertEqual(
+            SystemDockSchema.backup(of: own, adding: existing),
+            ["autohide": .bool(false), "allow-display-switching": .bool(true)]
+        )
     }
 
     func testPersistentAppsParser() {
@@ -429,6 +463,8 @@ final class AgentWireTests: XCTestCase {
             .dockBadges,
             .minimizedWindows,
             .showWindow(WindowInfo(pid: 503, bundleIdentifier: "com.apple.TextEdit", title: "Notes.txt", index: 2)),
+            .appCommands(pid: 504, bundleIdentifier: "com.apple.Safari"),
+            .runAppCommand(pid: 504, bundleIdentifier: "com.apple.Safari", command: AppCommand(title: "New Window", keys: "⌘N")),
             .installUpdate(version: "1.2.0", sha256: String(repeating: "ab", count: 32)),
         ]
         for request in requests {
@@ -467,6 +503,9 @@ final class AgentWireTests: XCTestCase {
         XCTAssertFalse(AgentWire.isWellFormed(.showWindow(WindowInfo(pid: 600, bundleIdentifier: "not a bundle", title: "", index: 0))))
         XCTAssertFalse(AgentWire.isWellFormed(.showWindow(WindowInfo(pid: 600, bundleIdentifier: "com.apple.TextEdit", title: "", index: 4096))))
         let hash = String(repeating: "ab", count: 32)
+        XCTAssertFalse(AgentWire.isWellFormed(.appCommands(pid: 1, bundleIdentifier: "com.apple.Safari")))
+        XCTAssertFalse(AgentWire.isWellFormed(.appCommands(pid: 600, bundleIdentifier: "not valid")))
+        XCTAssertFalse(AgentWire.isWellFormed(.runAppCommand(pid: 600, bundleIdentifier: "com.apple.Safari", command: AppCommand(title: ""))))
         XCTAssertFalse(AgentWire.isWellFormed(.installUpdate(version: "1.2.0/../../x", sha256: hash)))
         XCTAssertFalse(AgentWire.isWellFormed(.installUpdate(version: "01.2", sha256: hash)))
         XCTAssertFalse(AgentWire.isWellFormed(.installUpdate(version: "1.2.0", sha256: String(repeating: "AB", count: 32))))

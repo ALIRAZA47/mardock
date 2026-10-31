@@ -133,9 +133,34 @@ final class AgentService: NSObject, MarDockAgentXPC, @unchecked Sendable {
             else { return { .failure(.notAllowed) } }
             return { WindowAccess.show(target) }
 
+        case let .appCommands(pid, bundleIdentifier):
+            guard limiter.allow("commands:\(pid)", every: 0.2) else { return { .failure(.rateLimited) } }
+            guard WindowAccess.isTrusted else { return { .failure(.notAllowed) } }
+            guard mayUseMenu(of: pid, bundleIdentifier: bundleIdentifier) else { return { .failure(.notAllowed) } }
+            return { .commands(MenuAccess.commands(pid: pid)) }
+
+        case let .runAppCommand(pid, bundleIdentifier, command):
+            guard limiter.allow("run:\(pid)", every: 0.3) else { return { .failure(.rateLimited) } }
+            guard WindowAccess.isTrusted else { return { .failure(.notAllowed) } }
+            guard mayUseMenu(of: pid, bundleIdentifier: bundleIdentifier) else { return { .failure(.notAllowed) } }
+            return { MenuAccess.run(command, pid: pid) }
+
         default:
             return nil
         }
+    }
+
+    /// The pid must still belong to the app the dock thinks it is, a regular
+    /// app and never us. Unlike quitting or showing a window this is allowed
+    /// for Finder: `AppCommandFilter` leaves only New and Open.
+    private func mayUseMenu(of pid: pid_t, bundleIdentifier: String) -> Bool {
+        guard let app = NSRunningApplication(processIdentifier: pid), !app.isTerminated,
+              let actual = app.bundleIdentifier,
+              actual.caseInsensitiveCompare(bundleIdentifier) == .orderedSame,
+              app.activationPolicy == .regular,
+              pid != clientPID, pid != getpid()
+        else { return false }
+        return !ownBundleIdentifiers.contains(actual.lowercased())
     }
 
     /// A reply that doesn't fit the wire becomes a failure the app can show,
@@ -163,8 +188,8 @@ final class AgentService: NSObject, MarDockAgentXPC, @unchecked Sendable {
             guard limiter.allow("apply", every: 0.4) else { return .failure(.rateLimited) }
             guard DockPreferences.write(changes) else { return .failure(.failed) }
             agentLog.info("Applied \(changes.count) Dock preference change(s)")
-            if restartDock, limiter.allow("restart", every: 1.5) {
-                DockPreferences.restartDock()
+            if restartDock {
+                DockPreferences.restartDock(limiter: limiter)
             }
             return .done
 
@@ -207,7 +232,7 @@ final class AgentService: NSObject, MarDockAgentXPC, @unchecked Sendable {
             }
             return .accessibility(trusted: WindowAccess.isTrusted)
 
-        case .dockBadges, .minimizedWindows, .showWindow:
+        case .dockBadges, .minimizedWindows, .showWindow, .appCommands, .runAppCommand:
             // Handled by `accessibilityWork(for:)`.
             return .failure(.invalidRequest)
 

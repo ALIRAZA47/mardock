@@ -49,6 +49,10 @@ public enum UpdateSource {
         URL(string: "https://api.github.com/repos/\(owner)/\(repository)/releases/latest")!
     }
 
+    public static var repositoryPage: URL {
+        URL(string: "https://github.com/\(owner)/\(repository)")!
+    }
+
     public static var releasesPage: URL {
         URL(string: "https://github.com/\(owner)/\(repository)/releases")!
     }

@@ -24,6 +24,10 @@ public enum AgentRequest: Codable, Equatable, Sendable {
     /// Brings back one window: unminimizes it if needed, raises it and
     /// activates its app.
     case showWindow(WindowInfo)
+    /// The commands in an app's File menu that `AppCommandFilter` lets through.
+    case appCommands(pid: Int32, bundleIdentifier: String)
+    /// Chooses one of those, brought to the front first.
+    case runAppCommand(pid: Int32, bundleIdentifier: String, command: AppCommand)
     /// Replaces MarDock.app with the release in the archive sent alongside
     /// (only through `install(_:archive:reply:)`). The archive must match
     /// `sha256`, and the app in it must be a validly signed MarDock of
@@ -40,6 +44,7 @@ public enum AgentReply: Codable, Equatable, Sendable {
     case accessibility(trusted: Bool)
     case badges([DockBadge])
     case windows([WindowInfo])
+    case commands([AppCommand])
     case done
     case failure(AgentFailure)
 }
@@ -134,7 +139,7 @@ public struct IntegrityReport: Codable, Equatable, Sendable {
 
 /// Encoding used on the XPC connection: bounded JSON.
 public enum AgentWire {
-    public static let protocolVersion = 3
+    public static let protocolVersion = 4
     public static let maxMessageSize = 64 * 1024
 
     public enum WireError: Error, Equatable {
@@ -179,6 +184,10 @@ public enum AgentWire {
             return true
         case let .showWindow(window):
             return window.isValid
+        case let .appCommands(pid, bundleIdentifier):
+            return pid > 1 && InputValidation.isValidBundleIdentifier(bundleIdentifier)
+        case let .runAppCommand(pid, bundleIdentifier, command):
+            return pid > 1 && InputValidation.isValidBundleIdentifier(bundleIdentifier) && command.isValid
         case let .installUpdate(version, sha256):
             return AppVersion(version)?.description == version && Checksums.isSHA256(sha256)
         case let .applySystemDock(changes, _):
